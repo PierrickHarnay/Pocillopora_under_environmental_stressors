@@ -79,9 +79,9 @@ This file have all the data concerning *benthos commununity* for all the sites s
 
 #### **Legend of the collum:**  
 
-***Name:*** Chaque photoquadrat possede un numero d'itentification. For example: Q04 _ S1 _ T3 will mean **Quadrats _ Site1 _ Transect3**. 
+***Name:*** Each photoquadrat has an identification number. For example: Q04 _ S1 _ T3 means **Quadrat 04 _ Site 1 _ Transect 3**
 
-***Label code:*** Sur chaque quadrats 100 points aleatoire ont ete generer puis attibue a des categories tel-que; Sand, Corals etc. Dans cette colones chaque points possede donc une categorie. Chaque transect possede 100 lignes dans le dataset. 
+***Label code:*** For each quadrat, 100 random points were generated and assigned to categories such as Sand, Coral, etc. In this column, each point is therefore associated with a category. Each transect contains 100 rows in the dataset.
 
 ### Metadata for POC RA Size ###
 
@@ -89,11 +89,11 @@ This file have all the data concerning *Pocillopora sizes* for all samples at al
 
 #### **Legend of the collum:**  
 
-***Sample.ID:*** contient les ID de chaque echantillions. 
+***Sample.ID:*** Contains the ID of each sample.
 
-***Site:*** contient l'ID de chaque site. *S* mean *Site*, *1,2,3,4,5,6,9,11,12,14,15,18* mean the site number. 
+***Site:*** Contains the ID of each site. *S* stands for *Site*, and *1, 2, 3, 4, 5, 6, 9, 11, 12, 14, 15, 18* represent the site numbers.
 
-***Transect:*** contient l'identification de chaque transect. *T* mean *Transect*, *1,2,3,4,5,6* mean the transect number on each site. 
+***Transect:*** Contains the identification of each transect. *T* stands for *Transect*, and *1, 2, 3, 4, 5, 6* represent the transect number at each site.
 
 ***Diameter.1:*** Contains the measured diameters of the samples.
 
@@ -109,19 +109,37 @@ This file have all the data concerning *Pocillopora species after sequencing and
 
 #### **Legend of the collum:**  
 
-***Sanger.Plate.Name :*** Contient l'identification de chaque plate envoye au sequencage. 
+***Sanger.Plate.Name :*** Contains the identification of each plate sent for sequencing.
 
 ***Sequence.ID :*** Sequence name 
 
-***Plate.Well :*** chaque plate contient 96 well organiser horizontallement par number de 1 a 12 et verticallement par lettre de A a H. Example si c'est inscrit B7 it's mean the sample is located in the plate at the letter B and number 7. 
+***Plate.Well :*** Each plate contains 96 wells arranged horizontally by numbers from 1 to 12 and vertically by letters from A to H. For example, if it is labeled B7, it means the sample is located in the plate at row B and column 7.
 
-***gDNA.Extraction.Plate :*** contient le numero et la plaque ou l'adn extract est disponible. 
+***gDNA.Extraction.Plate :*** Contains the number and the plate where the DNA extract is available.
 
-***Sample.ID :*** contient les ID de chaque echantillions. 
+***Sample.ID :*** Contains the ID of each sample.
 
-***Haplotype :*** contient le nom de l'haplotype pour chaque echantillions. 
+***Haplotype :*** Contains the haplotype name for each sample.
 
-***
+***Species :*** Contains the species name of *Pocillopora* identified during sequencing or after mtORF analysis.
 
+### Metadata for Bulk density data ###
 
+This file have all the data concerning *Pocillopora bulk density* for all samples at all sites.
+
+For size-related reasons, for some collected samples (colonies of *Pocillopora*), we were not able to keep a fragment for skeletal density analysis. This applies in most cases to encrusting or very young juvenile colonies.
+
+#### **Legend of the collum:**  
+
+***Fragment ID :*** Contains the ID of each sample.
+
+***DW.clean.g :*** Dry weight (clean) calculated in grams. Samples were weighed on a precision scale once the skeleton was free of wax and dry.
+
+***DW.wax.g :*** Dry weight (wax) calculated in grams. Samples were weighed on a precision balance after being dipped in wax at 90°C for a few seconds and then dried before measurement.  
+
+***BW.wax.g :*** Buoyant weight (wax) calculated in grams. Samples were weighed on a precision balance while placed on a platform submerged in DI water maintained at 20°C during measurement.
+
+***Temperature.C :*** Temperature from the water bath used during the buoyant weight wax measurement procedure.
+
+***Page.Num :*** Page number in the notebook where the data is located.
 
