@@ -1,0 +1,20 @@
+---
+title: "Relative_abundance"
+output: html_document
+---
+This script aims to analyse the relative abundance of Pocillopora around the island of Mo’orea under 12 environmental conditions. This script also aims to characterize the benthos at each site in order to better understand the biodiversity in which the Pocillopora community lives.
+
+Q1: What does the benthic cover of the lagoon around the island look like?
+Q2: How are Pocillopora species distributed around the lagoon?
+
+What corals are found on the lagoon reefs of Mo’orea?
+What Pocillopora species are found on the lagoon reefs of Mo’orea?
+
+H0: Benthic cover, coral cover, and Pocillopora cover differ by site.
+
+#Install and load packages
+```{r}
+library("ggplot2")
+library("ggpubr")
+library("tidyverse")
+```
