@@ -250,6 +250,7 @@ cat("Final dataset dimensions:", dim(data), "\n")
 ```
 ```{r}
 #for the rest of the analysis we add the shore to fit the futur BORAL analysis
+# --- Shore Assignment ---------------------------------------
 # Manually assign each site to its corresponding shore
 # based on the geographic position around Mo'orea island
 # North: sites 2, 3, 4, 5
@@ -258,9 +259,9 @@ cat("Final dataset dimensions:", dim(data), "\n")
 
 data <- data |>
   mutate(Shore = case_when(
-    Site %in% c(2, 3, 4, 5)       ~ "North",
-    Site %in% c(6, 9, 11)         ~ "East",
-    Site %in% c(12, 14, 15, 18)   ~ "West",
+    Site %in% c("S2", "S3", "S4", "S5")       ~ "North",
+    Site %in% c("S6", "S9", "S11")         ~ "East",
+    Site %in% c("S12", "S14", "S15", "S18")   ~ "West",
     .default = NA_character_
   )) |>
   mutate(Shore = factor(Shore, levels = c("North", "East", "West")))
@@ -273,6 +274,105 @@ data |>
 
 # Confirm no unassigned sites
 cat("Samples with no shore assigned:", sum(is.na(data$Shore)), "\n")
+
+```
+```{r}
+# --- Color Palette ------------------------------------------
+# Define species color mapping for all plots
+cols.species <- cbind.data.frame(
+  Species = factor(c("P. tuahiniensis",
+                     "P. meandrinaP. grandis",
+                     "P. verrucosa",
+                     "P. grandis",
+                     "P. effusa",
+                     "P. acuta",
+                     "P. meandrina")),
+  Color   = c("#D55E00",
+              "#0072B2",
+              "#E69F00",
+              "#56B4E9",
+              "#009E73",
+              "#e63946",
+              "#0072B2"))
+
+color_mapping <- setNames(cols.species$Color, cols.species$Species)
+
+# --- Relative Abundance: Species & Size by Site -------------
+ra_species_size <- data |>
+  group_by(Shore, Site, Species, LifeStage) |>
+  summarise(count = n(), .groups = "drop") |>
+  group_by(Site) |>
+  mutate(relative_abundance = count / sum(count) * 100) |>
+  ungroup()
+
+# Plot
+ggplot(ra_species_size, aes(x = Site, y = relative_abundance, fill = Species)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_grid(LifeStage ~ Shore, scales = "free_x", space = "free_x") +
+  scale_fill_manual(values = color_mapping) +
+  labs(
+    title = "Relative Abundance of Pocillopora by Species and Size Class",
+    x     = "Site",
+    y     = "Relative Abundance (%)",
+    fill  = "Species"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x      = element_text(angle = 45, hjust = 1),
+    strip.text       = element_text(face = "bold"),
+    strip.background = element_rect(fill = "lightgrey"),
+    legend.position  = "bottom"
+  )
+
+# --- Relative Abundance: Species & Size by Site -------------
+
+# Calculate relative abundance and sample counts per site
+ra_species_size <- data |>
+  group_by(Shore, Site, Species, LifeStage) |>
+  summarise(count = n(), .groups = "drop") |>
+  group_by(Site, LifeStage) |>
+  mutate(
+    total              = sum(count),
+    relative_abundance = count / total * 100
+  ) |>
+  ungroup() |>
+  mutate(Site = factor(Site, levels = rev(c("S2","S3","S4","S5",
+                                            "S6","S9","S11",
+                                            "S12","S14","S15","S18"))))
+
+# Plot
+ggplot(ra_species_size, aes(x = relative_abundance, y = Site, fill = Species)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(
+    data = ra_species_size |> distinct(Site, LifeStage, total),
+    aes(x = 102, y = Site, label = total),
+    inherit.aes = FALSE,
+    size        = 2.5,
+    hjust       = 0
+  ) +
+  facet_grid(Shore ~ LifeStage, scales = "free_y", space = "free_y") +
+  scale_fill_manual(values = color_mapping) +
+  scale_x_continuous(
+    limits = c(0, 115),
+    breaks = c(0, 25, 50, 75, 100),
+    labels = c("0%", "25%", "50%", "75%", "100%")
+  ) +
+  labs(
+    title = "Relative Abundance of Pocillopora by Species and Size Class",
+    x     = "Relative Abundance (%)",
+    y     = "Site",
+    fill  = "Species"
+  ) +
+  theme_bw() +
+  theme(
+    strip.text.x     = element_text(face = "bold"),
+    strip.text.y     = element_text(face = "bold", angle = 0),
+    strip.background = element_rect(fill = "lightgrey"),
+    legend.position  = "right",
+    panel.spacing    = unit(0.3, "lines")
+  )
+```
+
 
 
 
