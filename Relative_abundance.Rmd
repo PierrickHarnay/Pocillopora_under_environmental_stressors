@@ -248,7 +248,31 @@ data <- data |>
 cat("Remaining NAs in LifeStage:", sum(is.na(data$LifeStage)), "\n")
 cat("Final dataset dimensions:", dim(data), "\n")
 ```
+```{r}
+#for the rest of the analysis we add the shore to fit the futur BORAL analysis
+# Manually assign each site to its corresponding shore
+# based on the geographic position around Mo'orea island
+# North: sites 2, 3, 4, 5
+# East:  sites 6, 9, 11
+# West:  sites 12, 14, 15, 18
 
+data <- data |>
+  mutate(Shore = case_when(
+    Site %in% c(2, 3, 4, 5)       ~ "North",
+    Site %in% c(6, 9, 11)         ~ "East",
+    Site %in% c(12, 14, 15, 18)   ~ "West",
+    .default = NA_character_
+  )) |>
+  mutate(Shore = factor(Shore, levels = c("North", "East", "West")))
+
+# Verify shore assignment
+data |>
+  group_by(Shore, Site) |>
+  summarise(n_samples = n(), .groups = "drop") |>
+  arrange(Shore, Site)
+
+# Confirm no unassigned sites
+cat("Samples with no shore assigned:", sum(is.na(data$Shore)), "\n")
 
 
 
