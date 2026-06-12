@@ -18,7 +18,8 @@ library("purrr")
 library("ggsn")
 library("colorspace")
 library("patchwork")
-#library("ggpubr")
+library("ggmap")
+library("ggh4x")
 ```
 
 Load Data Files for Analysis
@@ -314,8 +315,9 @@ cat("Samples with no shore assigned:", sum(is.na(data$Shore)), "\n")
 ```
 Moorea site map
 ```{r}
-register_google(key = "AIzaSyDZTVynfNT255GZVm4oW1R3P5eJ4vuM05Y") ### use your own API
-
+register_google(
+  key = Sys.getenv("GOOGLE_MAPS_API_KEY")
+)
 # location
 Moorea<-data.frame(lon = -149.83246425684064, lat = -17.531092816791094)
 
@@ -332,7 +334,24 @@ str(sitedata)
 
 labels <- sitedata$Site
 
-map_plot <-ggmap(M1) +
+shore_bars <- data.frame(
+  Shore = c("North", "East", "West"),
+  color = c("turquoise2", "palegreen1", "plum2"),
+
+  # edit these coordinates to place bars exactly where you want them
+  x    = c(-149.92389316984602, -149.74536533966472, -149.86415501188452),
+  xend = c(-149.7767793719456, -149.79188557213965, -149.94215561),
+  y    = c(-17.4709289594418, -17.496471002597975, -17.607929750776858),
+  yend = c(-17.45799283993501, -17.604330100673128, -17.49303285959368)
+)
+
+map_plot <- ggmap(M1) +
+  geom_segment(
+    data = shore_bars,
+    aes(x = x, y = y, xend = xend, yend = yend, color = Shore),
+    linewidth = 1,
+    lineend = "round"
+  ) +
   geom_point(
     data = sitedata,
     aes(x = long, y = lat),
@@ -342,13 +361,21 @@ map_plot <-ggmap(M1) +
   geom_text(
     data = sitedata,
     aes(x = long, y = lat, label = Site),
-    vjust = -2,
+    vjust = -1,
     size = 3,
     color = "yellow"
   ) +
+  scale_color_manual(
+    values = c(
+      North = "turquoise2",
+      East  = "palegreen1",
+      West  = "plum2"
+    ),
+    guide = "none"
+  ) +
   scalebar(
     data = sitedata,
-    dist = 2,          # 5 km scale bar
+    dist = 2,
     dist_unit = "km",
     transform = TRUE,
     model = "WGS84",
@@ -1089,11 +1116,11 @@ pocillopora_size_plot <- ggplot(rel_abund,
     size = 2.5
   ) +
 
-  facet_grid(
-    SizeClass ~ Shore,
-    scales = "free_x",
-    space = "free_x"
-  ) +
+  #facet_grid(
+  #  SizeClass ~ Shore,
+  #  scales = "free_x",
+  #  space = "free_x"
+ # ) +
 
   scale_fill_manual(
     values = c(
@@ -1133,17 +1160,37 @@ pocillopora_size_plot <- ggplot(rel_abund,
     legend.position = "bottom",
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
-pocillopora_size_plot
+
+pocillopora_size_plot.2 <- pocillopora_size_plot +
+  facet_grid2(
+    SizeClass ~ Shore,
+    scales = "free_x",
+    space = "free_x",
+    strip = strip_themed(
+      background_x = elem_list_rect(
+        fill = c(
+          "turquoise2",  # North
+          "palegreen1",  # East
+          "plum2"        # West
+        ),
+        color = "black"
+      ),
+      text_x = elem_list_text(
+        face = "bold",
+        color = "black"
+      )
+    )
+  )
+pocillopora_size_plot.2
 ```
 
 ```{r}
-#Use a function that takes one SizeClass, runs the PERMANOVA/dispersion/NMDS, and returns the plot plus results.
-
+# Function that runs PERMANOVA, dispersion test, NMDS, and generates a plot
 run_sizeclass_nmds <- function(size_class_name) {
-  
+
   data_sub <- data %>%
     filter(SizeClass == size_class_name)
-  
+
   comm <- data_sub %>%
     count(Shore, Site, Transect, Species) %>%
     group_by(Shore, Site, Transect) %>%
@@ -1155,38 +1202,57 @@ run_sizeclass_nmds <- function(size_class_name) {
       values_from = RelAbundance,
       values_fill = 0
     )
-  
+
   meta <- comm %>%
     select(Shore, Site, Transect)
-  
+
   comm_mat <- comm %>%
     select(-Shore, -Site, -Transect)
-  
+
+  # Bray-Curtis distance
   dist_bc <- vegdist(comm_mat, method = "bray")
-  
+
+  # PERMANOVA
   site_per <- adonis2(
     dist_bc ~ Site,
     data = meta,
     permutations = 9999
   )
-  
+
+  # Dispersion test
   disp <- betadisper(dist_bc, meta$Site)
   disp_anova <- anova(disp)
   disp_perm <- permutest(disp, permutations = 9999)
-  
+
+  # NMDS
   nmds <- metaMDS(
     comm_mat,
     distance = "bray",
     k = 2,
     trymax = 100
   )
-  
+
+  # Extract PERMANOVA statistics
+  per_tab <- as.data.frame(site_per)
+
+  site_p <- per_tab["Site", "Pr(>F)"]
+  site_R2 <- per_tab["Site", "R2"]
+
+  stat_label <- paste0(
+    "p = ", signif(site_p, 3),
+    #"\nR² = ", round(site_R2, 2),
+    "\nStress = ", round(nmds$stress, 3)
+  )
+
+  # NMDS scores
   scores_df <- as.data.frame(scores(nmds, display = "sites"))
+
   scores_df$Shore <- meta$Shore
   scores_df$Site <- meta$Site
   scores_df$Transect <- meta$Transect
   scores_df$SizeClass <- size_class_name
-  
+
+  # Site centroids
   centroids <- scores_df %>%
     group_by(Shore, Site) %>%
     summarise(
@@ -1194,67 +1260,87 @@ run_sizeclass_nmds <- function(size_class_name) {
       NMDS2 = mean(NMDS2),
       .groups = "drop"
     )
-  
+
+  # Convex hulls
   hulls <- scores_df %>%
     group_by(Site) %>%
     filter(n() >= 3) %>%
     slice(chull(NMDS1, NMDS2))
-  
-  p <- ggplot(scores_df,
-            aes(NMDS1, NMDS2,
-                color = Site,
-                shape = Site)) +
 
-  geom_polygon(
-    data = hulls,
-    aes(fill = Site),
-    alpha = 0.3,
-    color = NA
-  ) +
-
-  geom_point(
-    size = 2,
-    alpha = 0.8
-  ) +
-
-geom_text(
-  data = centroids,
-  aes(label = Site),
-  color = "black",
-  fontface = "bold",
-  size = 2
-) +
-
-  scale_color_manual(values = site_cols) +
-  scale_fill_manual(values = site_cols) +
-
-  scale_shape_manual(
-    values = c(
-      S2  = 1,
-      S3  = 2,
-      S4  = 3,
-      S5  = 4,
-      S6  = 5,
-      S9  = 6,
-      S11 = 7,
-      S12 = 8,
-      S14 = 9,
-      S15 = 10,
-      S18 = 11
+  # Plot
+  p <- ggplot(
+    scores_df,
+    aes(
+      NMDS1,
+      NMDS2,
+      color = Site,
+      shape = Site
     )
   ) +
 
-  labs(
-    x = "NMDS1",
-    y = "NMDS2",
-    color = "Site",
-    fill = "Site",
-    shape = "Site"
-  ) +
+    geom_polygon(
+      data = hulls,
+      aes(fill = Site),
+      alpha = 0.3,
+      color = NA
+    ) +
 
-  theme_bw()+
-    theme(legend.position="none")
-  
+    geom_point(
+      size = 2,
+      alpha = 0.8
+    ) +
+
+    geom_text(
+      data = centroids,
+      aes(label = Site),
+      color = "black",
+      fontface = "bold",
+      size = 2
+    ) +
+
+    annotate(
+      "text",
+      x = Inf,
+      y = Inf,
+      label = stat_label,
+      hjust = 1.05,
+      vjust = 1.1,
+      size = 3
+    ) +
+
+    scale_color_manual(values = site_cols) +
+
+    scale_fill_manual(values = site_cols) +
+
+    scale_shape_manual(
+      values = c(
+        S2  = 1,
+        S3  = 2,
+        S4  = 3,
+        S5  = 4,
+        S6  = 5,
+        S9  = 6,
+        S11 = 7,
+        S12 = 8,
+        S14 = 9,
+        S15 = 10,
+        S18 = 11
+      )
+    ) +
+
+    labs(
+      x = "NMDS1",
+      y = "NMDS2",
+      color = "Site",
+      fill = "Site",
+      shape = "Site"
+    ) +
+
+    theme_bw() +
+    theme(
+      legend.position = "none"
+    )
+
   list(
     size_class = size_class_name,
     permanova = site_per,
@@ -1267,12 +1353,11 @@ geom_text(
   )
 }
 
-#Run it for all size classes:
-
+# Run for all size classes
 size_results <- map(levels(data$SizeClass), run_sizeclass_nmds)
 names(size_results) <- levels(data$SizeClass)
 
-#View PERMANOVA results
+# Summary table
 size_summary <- map_dfr(size_results, function(x) {
 
   per <- as.data.frame(x$permanova)
@@ -1280,7 +1365,7 @@ size_summary <- map_dfr(size_results, function(x) {
   tibble(
     SizeClass = x$size_class,
     Df        = per["Site", "Df"],
-    R2        = per["Site", "R2"],
+   # R2        = per["Site", "R2"],
     F         = per["Site", "F"],
     p.value   = per["Site", "Pr(>F)"],
     Stress    = x$nmds$stress
@@ -1289,16 +1374,13 @@ size_summary <- map_dfr(size_results, function(x) {
 
 size_summary
 
-#Print all plots:
-
-walk(size_results, ~ print(.x$plot))
-
+# Extract plots
 pocillopora_NMDS_02 <- size_results[["0-2cm"]]$plot +
   labs(x = NULL) +
   theme(
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
-    theme(legend.position="none")
+    legend.position = "none"
   )
 
 pocillopora_NMDS_25 <- size_results[[">2cm-5cm"]]$plot +
@@ -1306,7 +1388,7 @@ pocillopora_NMDS_25 <- size_results[[">2cm-5cm"]]$plot +
   theme(
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
-    theme(legend.position="none")
+    legend.position = "none"
   )
 
 pocillopora_NMDS_514 <- size_results[[">5cm-14cm"]]$plot +
@@ -1314,19 +1396,21 @@ pocillopora_NMDS_514 <- size_results[[">5cm-14cm"]]$plot +
   theme(
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
-    theme(legend.position="none")
+    legend.position = "none"
   )
 
 pocillopora_NMDS_14up <- size_results[[">14cm"]]$plot +
   labs(x = "NMDS1") +
-  theme(legend.position="none")
-
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  )
 ```
 
 Plot multipanel figures
 ```{r}
 # plot objects
-Fig8 <- pocillopora_size_plot + labs(tag = "A")
+Fig8 <- pocillopora_size_plot.2 + labs(tag = "A")
 Fig9 <- pocillopora_NMDS_02 + labs(tag = "B")
 Fig10 <- pocillopora_NMDS_25 + labs(tag = "C")
 Fig11 <- pocillopora_NMDS_514 + labs(tag = "D")
@@ -1336,10 +1420,10 @@ right_column <-
   (Fig9 /
    Fig10  /
    Fig11 /
-   Fig12) #+
+   Fig12) +
   plot_layout(guides = "collect") &
   theme(
-    legend.position = "none",
+    legend.position = "bottom",
     legend.title = element_blank()
   )
 
