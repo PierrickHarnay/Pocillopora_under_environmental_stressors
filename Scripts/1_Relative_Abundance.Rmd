@@ -334,24 +334,24 @@ str(sitedata)
 
 labels <- sitedata$Site
 
-shore_bars <- data.frame(
-  Shore = c("North", "East", "West"),
-  color = c("turquoise2", "palegreen1", "plum2"),
-
-  # edit these coordinates to place bars exactly where you want them
-  x    = c(-149.92389316984602, -149.74536533966472, -149.86415501188452),
-  xend = c(-149.7767793719456, -149.79188557213965, -149.94215561),
-  y    = c(-17.4709289594418, -17.496471002597975, -17.607929750776858),
-  yend = c(-17.45799283993501, -17.604330100673128, -17.49303285959368)
-)
+# shore_bars <- data.frame(
+#   Shore = c("North", "East", "West"),
+#   color = c("turquoise2", "palegreen1", "plum2"),
+# 
+#   # edit these coordinates to place bars exactly where you want them
+#   x    = c(-149.92389316984602, -149.74536533966472, -149.86415501188452),
+#   xend = c(-149.7767793719456, -149.79188557213965, -149.94215561),
+#   y    = c(-17.4709289594418, -17.496471002597975, -17.607929750776858),
+#   yend = c(-17.45799283993501, -17.604330100673128, -17.49303285959368)
+# )
 
 map_plot <- ggmap(M1) +
-  geom_segment(
-    data = shore_bars,
-    aes(x = x, y = y, xend = xend, yend = yend, color = Shore),
-    linewidth = 1,
-    lineend = "round"
-  ) +
+  # geom_segment(
+  #   data = shore_bars,
+  #   aes(x = x, y = y, xend = xend, yend = yend, color = Shore),
+  #   linewidth = 1,
+  #   lineend = "round"
+  # ) +
   geom_point(
     data = sitedata,
     aes(x = long, y = lat),
@@ -365,21 +365,21 @@ map_plot <- ggmap(M1) +
     size = 3,
     color = "yellow"
   ) +
-  scale_color_manual(
-    values = c(
-      North = "turquoise2",
-      East  = "palegreen1",
-      West  = "plum2"
-    ),
-    guide = "none"
-  ) +
+  # scale_color_manual(
+  #   values = c(
+  #     North = "turquoise2",
+  #     East  = "palegreen1",
+  #     West  = "plum2"
+  #   ),
+  #   guide = "none"
+  # ) +
   scalebar(
     data = sitedata,
     dist = 2,
     dist_unit = "km",
     transform = TRUE,
     model = "WGS84",
-    st.size = 3,
+    st.size = 2,
     st.color = "white",
     box.color = "white",
     height = 0.001,
@@ -489,14 +489,69 @@ data_benthic <- data_benthic %>%
     )
   )
 
+# Map abbreviated CoralNet codes to full plotting names
+benthic_name_map <- c(
+  "Acanthastr" = "Acanthastrea",
+  "Acropora"   = "Acropora",
+  "Astreopora" = "Astreopora",
+  "Cyphastrea" = "Cyphastrea",
+  "Fungia"     = "Fungia",
+  "Gardinoser" = "Gardineroseris",
+  "Leptastrea" = "Leptastrea",
+  "Leptoseris" = "Leptoseris",
+  "Lobophylli" = "Lobophyllia",
+  "Montastrea" = "Montastraea",
+  "Montipora"  = "Montipora",
+  "Pachyseris" = "Pachyseris",
+  "Pavona"     = "Pavona",
+  "Pocillopo"  = "Pocillopora",
+  "Porites"    = "Porites",
+  "Psammomora" = "Psammocora",
+  "Tubastrea"  = "Tubastraea",
+  "Sandolitha" = "Sandalolitha",
+  "Un coral"   = "Unidentified coral",
+  "Macroalgae" = "Macroalgae",
+  "CCA_bare"   = "Rubble, Crustose Coralline Algae, Turf",
+  "Sand"       = "Sand",
+  "Unk"        = "Unknown",
+  "GiCl"       = "Giant clam",
+  "Millepora"  = "Millepora"
+)
+
+data_benthic <- data_benthic %>%
+  mutate(
+    Benthic.Name = recode(Benthic.Type, !!!benthic_name_map)
+  )
+
 # Calculate relative abundance
 benthic_rel <- data_benthic %>%
-  count(Benthic.Group, Benthic.Type, name = "Count") %>%
+  count(Benthic.Group, Benthic.Name, name = "Count") %>%
   mutate(RelAbundance = Count / sum(Count)) %>%
   arrange(Benthic.Group, desc(RelAbundance)) %>%
   mutate(
-    Benthic.Type = factor(Benthic.Type, levels = unique(Benthic.Type))
+    Benthic.Name = factor(Benthic.Name, levels = unique(Benthic.Name))
   )
+
+# Italicize genus names, keep non-genus labels plain
+non_genus_names <- c(
+  "Unidentified coral",
+  "Macroalgae",
+  "Rubble, Crustose Coralline Algae, Turf",
+  "Sand",
+  "Unknown",
+  "Giant clam"
+)
+
+benthic_labels <- setNames(
+  lapply(levels(benthic_rel$Benthic.Name), function(x) {
+    if (x %in% non_genus_names) {
+      x
+    } else {
+      bquote(italic(.(x)))
+    }
+  }),
+  levels(benthic_rel$Benthic.Name)
+)
 
 # Number of unique quadrats
 N_quadrats <- data_benthic %>%
@@ -513,7 +568,7 @@ group_bases <- c(
 
 # Generate shades within each ecological group
 benthic_cols <- benthic_rel %>%
-  distinct(Benthic.Group, Benthic.Type) %>%
+  distinct(Benthic.Group, Benthic.Name) %>%
   group_by(Benthic.Group) %>%
   mutate(
     Color = lighten(
@@ -525,7 +580,7 @@ benthic_cols <- benthic_rel %>%
 
 color_mapping <- setNames(
   benthic_cols$Color,
-  benthic_cols$Benthic.Type
+  benthic_cols$Benthic.Name
 )
 
 # Plot
@@ -534,33 +589,38 @@ benthic_overall_plot <- ggplot(
   aes(
     x = "Overall",
     y = RelAbundance,
-    fill = Benthic.Type
+    fill = Benthic.Name
   )
 ) +
   geom_col(width = 0.7) +
   geom_text(
     aes(
       x = "Overall",
-      y = 1.03,
-      label = paste0(N_quadrats)
+      y = 1.05,
+      label = N_quadrats
     ),
     inherit.aes = FALSE,
-    fontface = "bold",
+    fontface = "plain",
     size = 4
   ) +
-  scale_fill_manual(values = color_mapping) +
-  scale_y_continuous(
-  breaks = seq(0, 1, by = 0.25),
-  labels = scales::percent_format(accuracy = 1)
+  scale_fill_manual(
+  values = color_mapping,
+  labels = benthic_labels
 )+
+  scale_y_continuous(
+    breaks = seq(0, 1, by = 0.25),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
   coord_cartesian(ylim = c(0, 1.08), clip = "off") +
   labs(
     x = NULL,
-    y = "Relative Abundance",
+    y = "Percent Cover",
     fill = "Benthic Type"
   ) +
-  theme_bw()+
+  theme_bw() +
   theme(legend.position = "none")
+
+
 benthic_overall_plot
 ```
 
@@ -569,14 +629,14 @@ Visualize Benthic Cover by Site
 
 # Calculate relative abundance by Shore and Site
 benthic_rel_site <- data_benthic %>%
-  count(Shore, Site, Benthic.Group, Benthic.Type, name = "Count") %>%
+  count(Shore, Site, Benthic.Group, Benthic.Name, name = "Count") %>%
   group_by(Shore, Site) %>%
   mutate(RelAbundance = Count / sum(Count)) %>%
   ungroup() %>%
   arrange(Benthic.Group, desc(RelAbundance)) %>%
   mutate(
     Site = factor(Site, levels = site_order),
-    Benthic.Type = factor(Benthic.Type, levels = unique(Benthic.Type))
+    Benthic.Name = factor(Benthic.Name, levels = names(color_mapping))
   )
 
 # Number of unique quadrats per Shore and Site
@@ -592,7 +652,7 @@ benthic_site_plot <- ggplot(
   aes(
     x = Site,
     y = RelAbundance,
-    fill = Benthic.Type
+    fill = Benthic.Name
   )
 ) +
   geom_col(width = 0.7) +
@@ -604,11 +664,14 @@ benthic_site_plot <- ggplot(
       label = N_quadrats
     ),
     inherit.aes = FALSE,
-    fontface = "bold",
+    fontface = "plain",
     size = 2
   ) +
   facet_grid(~ Shore, scales = "free_x", space = "free_x") +
-  scale_fill_manual(values = color_mapping) +
+  scale_fill_manual(
+  values = color_mapping,
+  labels = benthic_labels
+)+
   coord_cartesian(ylim = c(0, 1.08), clip = "off") +
   scale_y_continuous(
   breaks = seq(0, 1, by = 0.25),
@@ -616,7 +679,7 @@ benthic_site_plot <- ggplot(
 )+
   labs(
     x = "Site",
-    y = "Relative Abundance",
+    y = "Percent Cover",
   fill = NULL
   ) +
   theme_bw() +
@@ -640,21 +703,35 @@ data_benthic_coral <- data_benthic %>%
 
 # Calculate relative abundance
 benthic_coral_rel <- data_benthic_coral %>%
-  count(Benthic.Group, Benthic.Type, name = "Count") %>%
+  count(Benthic.Group, Benthic.Name, name = "Count") %>%
   mutate(RelAbundance = Count / sum(Count)) %>%
   arrange(Benthic.Group, desc(RelAbundance)) %>%
   mutate(
-    Benthic.Type = factor(Benthic.Type, levels = unique(Benthic.Type))
+    Benthic.Name = factor(Benthic.Name, levels = unique(Benthic.Name))
   )
 
+# Labels: italicize genus names, keep non-genus labels plain
+non_genus_names <- c("Unidentified coral")
+
+coral_labels <- setNames(
+  lapply(levels(benthic_coral_rel$Benthic.Name), function(x) {
+    if (x %in% non_genus_names) {
+      x
+    } else {
+      bquote(italic(.(x)))
+    }
+  }),
+  levels(benthic_coral_rel$Benthic.Name)
+)
+
 # Number of unique quadrats
-N_quadrats <- data_benthic_coral %>%
+N_quadrats <- data_benthic %>%
   distinct(Site, Transect, Quadrat) %>%
   nrow()
 
-unique(data_benthic_coral$Benthic.Type)
+unique(data_benthic_coral$Benthic.Name)
 
-coral_types <- sort(unique(data_benthic_coral$Benthic.Type))
+coral_types <- sort(unique(data_benthic_coral$Benthic.Name))
 
 coral_color_mapping <- setNames(
   qualitative_hcl(
@@ -672,11 +749,24 @@ hard_coral_overall_plot <- ggplot(
   aes(
     x = "Overall",
     y = RelAbundance,
-    fill = Benthic.Type
+    fill = Benthic.Name
   )
 ) +
   geom_col(width = 0.7) +
-  scale_fill_manual(values = coral_color_mapping) +
+  geom_text(
+    aes(
+      x = "Overall",
+      y = 1.05,
+      label = N_quadrats
+    ),
+    inherit.aes = FALSE,
+    fontface = "plain",
+    size = 4
+  ) +
+  scale_fill_manual(
+  values = coral_color_mapping,
+  labels = coral_labels
+)+
   coord_cartesian(ylim = c(0, 1.08), clip = "off") +
   scale_y_continuous(
   breaks = seq(0, 1, by = 0.25),
@@ -684,7 +774,7 @@ hard_coral_overall_plot <- ggplot(
 )+
   labs(
     x = NULL,
-    y = "Relative Abundance",
+    y = "Percent Cover",
     fill = "Hard Coral Type"
   ) +
   theme_bw()+
@@ -695,14 +785,14 @@ Coral only relative abundance by Site
 ```{r}
 # Coral relative abundance by Site
 benthic_coral_rel_site <- data_benthic_coral %>%
-  count(Shore, Site, Benthic.Type, name = "Count") %>%
+  count(Shore, Site, Benthic.Name, name = "Count") %>%
   group_by(Shore, Site) %>%
   mutate(RelAbundance = Count / sum(Count)) %>%
   ungroup() %>%
   arrange(desc(RelAbundance)) %>%
   mutate(
     Site = factor(Site, levels = site_order),
-    Benthic.Type = factor(Benthic.Type, levels = coral_types)
+    Benthic.Name = factor(Benthic.Name, levels = coral_types)
   )
 
 # Number of unique quadrats per Site
@@ -717,12 +807,37 @@ hard_coral_site_plot <- ggplot(
   aes(
     x = Site,
     y = RelAbundance,
-    fill = Benthic.Type
+    fill = Benthic.Name
   )
 ) +
   geom_col(width = 0.7) +
+  geom_text(
+    data = site_n,
+    aes(
+      x = Site,
+      y = 1.03,
+      label = N_quadrats
+    ),
+    inherit.aes = FALSE,
+    fontface = "bold",
+    size = 2
+  ) +
+  geom_text(
+    data = site_n,
+    aes(
+      x = Site,
+      y = 1.03,
+      label = N_quadrats
+    ),
+    inherit.aes = FALSE,
+    fontface = "plain",
+    size = 2
+  ) +
   facet_grid(~ Shore, scales = "free_x", space = "free_x") +
-  scale_fill_manual(values = coral_color_mapping) +
+  scale_fill_manual(
+  values = coral_color_mapping,
+  labels = coral_labels
+)+
   coord_cartesian(ylim = c(0, 1.08), clip = "off") +
   scale_y_continuous(
   breaks = seq(0, 1, by = 0.25),
@@ -730,7 +845,7 @@ hard_coral_site_plot <- ggplot(
 )+
   labs(
     x = "Site",
-    y = "Relative Abundance",
+    y = "Percent Cover",
   fill = NULL) +
   theme_bw() +
   theme(
@@ -783,7 +898,8 @@ pocillopora_site_plot <- ggplot(rel_abund,
   geom_text(
     data = site_n,
     aes(x = Site, y = 1.03, label = N),
-    inherit.aes = FALSE,
+        inherit.aes = FALSE,
+    fontface = "plain",
     size = 2
   ) +
   labs(
@@ -993,11 +1109,11 @@ pocillopora_overall_plot <- ggplot(rel_abund_overall,
        aes(x = "Overall",
            y = RelAbundance,
            fill = Species)) +
-  geom_col() +
+  geom_col(width=0.7) +
 
   geom_text(
     aes(x = "Overall",
-        y = 1.03,
+        y = 1.05,
         label = N_total),
     inherit.aes = FALSE,
     fontface = "plain",
@@ -1052,14 +1168,25 @@ Fig5 <- benthic_site_plot + labs(tag = "C")
 Fig6 <- hard_coral_site_plot + labs(tag = "E")
 Fig7 <- pocillopora_site_plot + labs(tag = "G")
 
+row1 <- Fig1
 
+row2 <- (Fig2 + Fig5) +
+  plot_layout(widths = c(0.8, 1.8))
 
-row1 <- wrap_plots(Fig1, nrow = 1)
-row2 <- wrap_plots(Fig2, Fig5, nrow = 1)
-row3 <- wrap_plots(Fig3, Fig6, nrow = 1)
-row4 <- wrap_plots(Fig4, Fig7, nrow = 1)
+row3 <- (Fig3 + Fig6) +
+  plot_layout(widths = c(0.8, 1.8))
 
-multi_panel_fig <- row1 / row2 /row3 / row4 &
+row4 <- (Fig4 + Fig7) +
+  plot_layout(widths = c(0.8, 1.8))
+
+multi_panel_fig <-
+  row1 /
+  row2 /
+  row3 /
+  row4 +
+  plot_layout(
+    heights = c(1.8, 1, 1, 1)
+  ) &
   theme(
     plot.tag = element_text(
       face = "bold",
@@ -1071,7 +1198,7 @@ multi_panel_fig <- row1 / row2 /row3 / row4 &
 ggsave(
   "Output/multi_panel_fig.pdf",
   multi_panel_fig,
-  width = 10,
+  width = 12,
   height = 10,
   units = "in",
   device = cairo_pdf,
@@ -1081,11 +1208,12 @@ ggsave(
 ggsave(
   "Output/multi_panel_fig.jpg",
   multi_panel_fig,
-  width = 10,
+  width = 12,
   height = 10,
   units = "in",
   bg = "white"
 )
+
 
 ```
 
@@ -1148,7 +1276,7 @@ pocillopora_size_plot <- ggplot(rel_abund,
 
   labs(
     x = "Site",
-    y = "Relative Abundance",
+    y = "Percent Cover",
     fill = NULL
   ) +
 
@@ -1168,11 +1296,11 @@ pocillopora_size_plot.2 <- pocillopora_size_plot +
     space = "free_x",
     strip = strip_themed(
       background_x = elem_list_rect(
-        fill = c(
-          "turquoise2",  # North
-          "palegreen1",  # East
-          "plum2"        # West
-        ),
+  fill = c(
+    alpha("turquoise2", 0.4),  # North
+    alpha("palegreen1", 0.4),  # East
+    alpha("plum2", 0.4)        # West
+  ),
         color = "black"
       ),
       text_x = elem_list_text(
@@ -1420,13 +1548,7 @@ right_column <-
   (Fig9 /
    Fig10  /
    Fig11 /
-   Fig12) +
-  plot_layout(guides = "collect") &
-  theme(
-    legend.position = "bottom",
-    legend.title = element_blank()
-  )
-
+   Fig12)
 
 multi_panel_nmds <-
   Fig8 | right_column +
@@ -1444,6 +1566,110 @@ ggsave(
   device = cairo_pdf,
   bg = "white"
 )
+
+ggsave(
+  "Output/multi_panel_nmds.jpg",
+  multi_panel_nmds,
+  width = 10,
+  height = 14,
+  units = "in",
+  bg = "white"
+)
+
+```
+
+
+```{r}
+# Shore colors
+shore_cols <- c(
+  North = "turquoise2",
+  East  = "palegreen1",
+  West  = "plum2"
+)
+
+# Site shapes
+site_shapes <- c(
+  S2  = 1,
+  S3  = 2,
+  S4  = 3,
+  S5  = 4,
+  S6  = 5,
+  S9  = 6,
+  S11 = 7,
+  S12 = 8,
+  S14 = 9,
+  S15 = 10,
+  S18 = 11
+)
+
+# Site-to-shore lookup
+site_key <- data %>%
+  distinct(Site, Shore) %>%
+  mutate(
+    Site = factor(Site, levels = names(site_shapes)),
+    Shore = factor(Shore, levels = c("North", "East", "West"))
+  ) %>%
+  arrange(Site)
+
+# Legend-only plot
+legend_plot <- ggplot(
+  site_key,
+  aes(
+    x = Site,
+    y = 1,
+    shape = Site,
+    fill = Shore
+  )
+) +
+  geom_point(
+    size = 3,
+    color = "black",
+    stroke = 0.8
+  ) +
+  scale_shape_manual(values = site_shapes) +
+  scale_fill_manual(values = shore_cols) +
+  guides(
+    shape = guide_legend(
+      title = NULL,
+      nrow = 2,
+      override.aes = list(
+        fill = shore_cols[as.character(site_key$Shore)],
+        color = "black",
+        size = 3
+      )
+    ),
+    fill = "none"
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 7),
+    legend.key.width = unit(0.35, "cm"),
+    legend.key.height = unit(0.3, "cm")
+  )
+
+site_legend <- cowplot::get_legend(legend_plot)
+
+# Remove legends from all NMDS panels
+Fig9  <- pocillopora_NMDS_02    + labs(tag = "B") + theme(legend.position = "none")
+Fig10 <- pocillopora_NMDS_25    + labs(tag = "C") + theme(legend.position = "none")
+Fig11 <- pocillopora_NMDS_514   + labs(tag = "D") + theme(legend.position = "none")
+Fig12 <- pocillopora_NMDS_14up  + labs(tag = "E") + theme(legend.position = "none")
+
+Fig8 <- pocillopora_size_plot.2 + labs(tag = "A")
+
+right_column <-
+  Fig9 /
+  Fig10 /
+  Fig11 /
+  Fig12 /
+  site_legend +
+  plot_layout(heights = c(1, 1, 1, 1, 0.18))
+
+multi_panel_nmds <-
+  Fig8 | right_column +
+  plot_layout(widths = c(1.5, 1))
+multi_panel_nmds
 
 ggsave(
   "Output/multi_panel_nmds.jpg",
