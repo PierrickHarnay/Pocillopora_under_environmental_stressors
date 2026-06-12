@@ -1222,7 +1222,7 @@ geom_text(
   aes(label = Site),
   color = "black",
   fontface = "bold",
-  size = 3
+  size = 2
 ) +
 
   scale_color_manual(values = site_cols) +
@@ -1245,10 +1245,6 @@ geom_text(
   ) +
 
   labs(
-    title = paste0(
-      "Size class: ", size_class_name,
-      " | NMDS stress = ", round(nmds$stress, 3)
-    ),
     x = "NMDS1",
     y = "NMDS2",
     color = "Site",
@@ -1256,7 +1252,8 @@ geom_text(
     shape = "Site"
   ) +
 
-  theme_bw()
+  theme_bw()+
+    theme(legend.position="none")
   
   list(
     size_class = size_class_name,
@@ -1296,10 +1293,33 @@ size_summary
 
 walk(size_results, ~ print(.x$plot))
 
-pocillopora_NMDS_02 <- size_results[["0-2cm"]]$plot
-pocillopora_NMDS_25 <- size_results[[">2cm-5cm"]]$plot
-pocillopora_NMDS_514 <- size_results[[">5cm-14cm"]]$plot
-pocillopora_NMDS_14up <- size_results[[">14cm"]]$plot
+pocillopora_NMDS_02 <- size_results[["0-2cm"]]$plot +
+  labs(x = NULL) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    theme(legend.position="none")
+  )
+
+pocillopora_NMDS_25 <- size_results[[">2cm-5cm"]]$plot +
+  labs(x = NULL) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    theme(legend.position="none")
+  )
+
+pocillopora_NMDS_514 <- size_results[[">5cm-14cm"]]$plot +
+  labs(x = NULL) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    theme(legend.position="none")
+  )
+
+pocillopora_NMDS_14up <- size_results[[">14cm"]]$plot +
+  labs(x = "NMDS1") +
+  theme(legend.position="none")
 
 ```
 
@@ -1312,38 +1332,40 @@ Fig10 <- pocillopora_NMDS_25 + labs(tag = "C")
 Fig11 <- pocillopora_NMDS_514 + labs(tag = "D")
 Fig12 <- pocillopora_NMDS_14up + labs(tag = "E")
 
-
-
-
-row1 <- wrap_plots(Fig1, nrow = 1)
-row2 <- wrap_plots(Fig2, Fig5, nrow = 1)
-row3 <- wrap_plots(Fig3, Fig6, nrow = 1)
-row4 <- wrap_plots(Fig4, Fig7, nrow = 1)
-
-multi_panel_fig <- row1 / row2 /row3 / row4 &
+right_column <-
+  (Fig9 /
+   Fig10  /
+   Fig11 /
+   Fig12) #+
+  plot_layout(guides = "collect") &
   theme(
-    plot.tag = element_text(
-      face = "bold",
-      size = 18
-    ),
-    plot.tag.position = c(0.02, 0.98)
+    legend.position = "none",
+    legend.title = element_blank()
+  )
+
+
+multi_panel_nmds <-
+  Fig8 | right_column +
+  plot_layout(
+    widths = c(1.5, 1),
+    heights = c(1, 1, 1, 1)
   )
 
 ggsave(
-  "Output/multi_panel_fig.pdf",
-  multi_panel_fig,
+  "Output/multi_panel_nmds.pdf",
+  multi_panel_nmds,
   width = 10,
-  height = 10,
+  height = 14,
   units = "in",
   device = cairo_pdf,
   bg = "white"
 )
 
 ggsave(
-  "Output/multi_panel_fig.jpg",
-  multi_panel_fig,
+  "Output/multi_panel_nmds.jpg",
+  multi_panel_nmds,
   width = 10,
-  height = 10,
+  height = 14,
   units = "in",
   bg = "white"
 )
