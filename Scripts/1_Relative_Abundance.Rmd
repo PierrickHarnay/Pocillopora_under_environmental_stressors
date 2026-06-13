@@ -1312,7 +1312,30 @@ pocillopora_size_plot.2 <- pocillopora_size_plot +
 pocillopora_size_plot.2
 ```
 
+PERMANOVA, dispersion test, NMDS, and plotting
 ```{r}
+# Shore colors
+shore_cols <- c(
+  North = "turquoise2",
+  East  = "palegreen1",
+  West  = "plum2"
+)
+
+# Site symbols: fillable shapes so shore color appears inside symbol
+site_shapes <- c(
+  S2  = 21,
+  S3  = 22,
+  S4  = 23,
+  S5  = 24,
+  S6  = 25,
+  S9  = 21,
+  S11 = 22,
+  S12 = 23,
+  S14 = 24,
+  S15 = 25,
+  S18 = 21
+)
+
 # Function that runs PERMANOVA, dispersion test, NMDS, and generates a plot
 run_sizeclass_nmds <- function(size_class_name) {
 
@@ -1337,22 +1360,18 @@ run_sizeclass_nmds <- function(size_class_name) {
   comm_mat <- comm %>%
     select(-Shore, -Site, -Transect)
 
-  # Bray-Curtis distance
   dist_bc <- vegdist(comm_mat, method = "bray")
 
-  # PERMANOVA
   site_per <- adonis2(
     dist_bc ~ Site,
     data = meta,
     permutations = 9999
   )
 
-  # Dispersion test
   disp <- betadisper(dist_bc, meta$Site)
   disp_anova <- anova(disp)
   disp_perm <- permutest(disp, permutations = 9999)
 
-  # NMDS
   nmds <- metaMDS(
     comm_mat,
     distance = "bray",
@@ -1360,19 +1379,15 @@ run_sizeclass_nmds <- function(size_class_name) {
     trymax = 100
   )
 
-  # Extract PERMANOVA statistics
   per_tab <- as.data.frame(site_per)
 
   site_p <- per_tab["Site", "Pr(>F)"]
-  site_R2 <- per_tab["Site", "R2"]
 
   stat_label <- paste0(
     "p = ", signif(site_p, 3),
-    #"\nR² = ", round(site_R2, 2),
     "\nStress = ", round(nmds$stress, 3)
   )
 
-  # NMDS scores
   scores_df <- as.data.frame(scores(nmds, display = "sites"))
 
   scores_df$Shore <- meta$Shore
@@ -1380,7 +1395,17 @@ run_sizeclass_nmds <- function(size_class_name) {
   scores_df$Transect <- meta$Transect
   scores_df$SizeClass <- size_class_name
 
-  # Site centroids
+  scores_df$Site <- droplevels(scores_df$Site)
+  scores_df$Shore <- droplevels(scores_df$Shore)
+
+  sites_in_plot <- levels(scores_df$Site)
+
+  site_shore_lookup <- scores_df %>%
+    distinct(Site, Shore) %>%
+    mutate(Site = as.character(Site)) %>%
+    filter(Site %in% sites_in_plot) %>%
+    arrange(match(Site, sites_in_plot))
+
   centroids <- scores_df %>%
     group_by(Shore, Site) %>%
     summarise(
@@ -1389,33 +1414,33 @@ run_sizeclass_nmds <- function(size_class_name) {
       .groups = "drop"
     )
 
-  # Convex hulls
   hulls <- scores_df %>%
     group_by(Site) %>%
     filter(n() >= 3) %>%
     slice(chull(NMDS1, NMDS2))
 
-  # Plot
   p <- ggplot(
     scores_df,
     aes(
       NMDS1,
       NMDS2,
-      color = Site,
       shape = Site
     )
   ) +
 
     geom_polygon(
       data = hulls,
-      aes(fill = Site),
+      aes(fill = Shore, group = Site),
       alpha = 0.3,
       color = NA
     ) +
 
     geom_point(
+      aes(fill = Shore),
+      color = "black",
       size = 2,
-      alpha = 0.8
+      stroke = 0.6,
+      alpha = 0.9
     ) +
 
     geom_text(
@@ -1436,38 +1461,36 @@ run_sizeclass_nmds <- function(size_class_name) {
       size = 3
     ) +
 
-    scale_color_manual(values = site_cols) +
-
-    scale_fill_manual(values = site_cols) +
+    scale_fill_manual(values = shore_cols) +
 
     scale_shape_manual(
-      values = c(
-        S2  = 1,
-        S3  = 2,
-        S4  = 3,
-        S5  = 4,
-        S6  = 5,
-        S9  = 6,
-        S11 = 7,
-        S12 = 8,
-        S14 = 9,
-        S15 = 10,
-        S18 = 11
-      )
+      values = site_shapes,
+      breaks = sites_in_plot
     ) +
+
+    guides(
+  fill = "none",
+  shape = guide_legend(
+    title = NULL,
+    nrow = 2,
+    byrow = TRUE,
+    override.aes = list(
+      fill = shore_cols[as.character(site_shore_lookup$Shore)],
+      color = "black",
+      size = 3,
+      stroke = 0.4,
+      alpha = 1
+    )
+  )
+) +
 
     labs(
       x = "NMDS1",
       y = "NMDS2",
-      color = "Site",
-      fill = "Site",
       shape = "Site"
     ) +
 
-    theme_bw() +
-    theme(
-      legend.position = "none"
-    )
+    theme_bw()
 
   list(
     size_class = size_class_name,
@@ -1493,7 +1516,6 @@ size_summary <- map_dfr(size_results, function(x) {
   tibble(
     SizeClass = x$size_class,
     Df        = per["Site", "Df"],
-   # R2        = per["Site", "R2"],
     F         = per["Site", "F"],
     p.value   = per["Site", "Pr(>F)"],
     Stress    = x$nmds$stress
@@ -1531,13 +1553,16 @@ pocillopora_NMDS_14up <- size_results[[">14cm"]]$plot +
   labs(x = "NMDS1") +
   theme(
     legend.position = "bottom",
-    legend.title = element_blank()
+    legend.title = element_blank(),
+    legend.text = element_text(size = 9),
+    legend.key.height = unit(0.5, "cm"),
+    legend.key.width = unit(0.75, "cm")
   )
 ```
 
-Plot multipanel figures
+Multipanel plot
 ```{r}
-# plot objects
+# Plot objects
 Fig8 <- pocillopora_size_plot.2 + labs(tag = "A")
 Fig9 <- pocillopora_NMDS_02 + labs(tag = "B")
 Fig10 <- pocillopora_NMDS_25 + labs(tag = "C")
@@ -1545,10 +1570,10 @@ Fig11 <- pocillopora_NMDS_514 + labs(tag = "D")
 Fig12 <- pocillopora_NMDS_14up + labs(tag = "E")
 
 right_column <-
-  (Fig9 /
-   Fig10  /
-   Fig11 /
-   Fig12)
+  Fig9 /
+  Fig10 /
+  Fig11 /
+  Fig12
 
 multi_panel_nmds <-
   Fig8 | right_column +
@@ -1578,106 +1603,3 @@ ggsave(
 
 ```
 
-
-```{r}
-# Shore colors
-shore_cols <- c(
-  North = "turquoise2",
-  East  = "palegreen1",
-  West  = "plum2"
-)
-
-# Site shapes
-site_shapes <- c(
-  S2  = 1,
-  S3  = 2,
-  S4  = 3,
-  S5  = 4,
-  S6  = 5,
-  S9  = 6,
-  S11 = 7,
-  S12 = 8,
-  S14 = 9,
-  S15 = 10,
-  S18 = 11
-)
-
-# Site-to-shore lookup
-site_key <- data %>%
-  distinct(Site, Shore) %>%
-  mutate(
-    Site = factor(Site, levels = names(site_shapes)),
-    Shore = factor(Shore, levels = c("North", "East", "West"))
-  ) %>%
-  arrange(Site)
-
-# Legend-only plot
-legend_plot <- ggplot(
-  site_key,
-  aes(
-    x = Site,
-    y = 1,
-    shape = Site,
-    fill = Shore
-  )
-) +
-  geom_point(
-    size = 3,
-    color = "black",
-    stroke = 0.8
-  ) +
-  scale_shape_manual(values = site_shapes) +
-  scale_fill_manual(values = shore_cols) +
-  guides(
-    shape = guide_legend(
-      title = NULL,
-      nrow = 2,
-      override.aes = list(
-        fill = shore_cols[as.character(site_key$Shore)],
-        color = "black",
-        size = 3
-      )
-    ),
-    fill = "none"
-  ) +
-  theme_void() +
-  theme(
-    legend.position = "bottom",
-    legend.text = element_text(size = 7),
-    legend.key.width = unit(0.35, "cm"),
-    legend.key.height = unit(0.3, "cm")
-  )
-
-site_legend <- cowplot::get_legend(legend_plot)
-
-# Remove legends from all NMDS panels
-Fig9  <- pocillopora_NMDS_02    + labs(tag = "B") + theme(legend.position = "none")
-Fig10 <- pocillopora_NMDS_25    + labs(tag = "C") + theme(legend.position = "none")
-Fig11 <- pocillopora_NMDS_514   + labs(tag = "D") + theme(legend.position = "none")
-Fig12 <- pocillopora_NMDS_14up  + labs(tag = "E") + theme(legend.position = "none")
-
-Fig8 <- pocillopora_size_plot.2 + labs(tag = "A")
-
-right_column <-
-  Fig9 /
-  Fig10 /
-  Fig11 /
-  Fig12 /
-  site_legend +
-  plot_layout(heights = c(1, 1, 1, 1, 0.18))
-
-multi_panel_nmds <-
-  Fig8 | right_column +
-  plot_layout(widths = c(1.5, 1))
-multi_panel_nmds
-
-ggsave(
-  "Output/multi_panel_nmds.jpg",
-  multi_panel_nmds,
-  width = 10,
-  height = 14,
-  units = "in",
-  bg = "white"
-)
-
-```
