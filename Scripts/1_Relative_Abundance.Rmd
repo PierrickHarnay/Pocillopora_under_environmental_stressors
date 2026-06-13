@@ -312,6 +312,171 @@ data %>%
 # Confirm no unassigned sites
 cat("Samples with no shore assigned:", sum(is.na(data$Shore)), "\n")
 
+# Calculate density of colonies per m2
+transect_area <- 25
+
+density_summary <- data %>%
+  count(
+    Site,
+    Transect,
+    Species,
+    SizeClass,
+    name = "N"
+  ) %>%
+  complete(
+    Site,
+    Transect,
+    Species,
+    SizeClass,
+    fill = list(N = 0)
+  ) %>%
+  mutate(
+    Density_m2 = N / transect_area
+  ) %>%
+  group_by(
+    Site,
+    Species,
+    SizeClass
+  ) %>%
+  summarise(
+    MeanDensity = mean(Density_m2),
+    SDDensity   = sd(Density_m2),
+    SE          = sd(Density_m2) / sqrt(n()),
+    N_transects = n(),
+    .groups = "drop"
+  )
+# Set factor orders
+density_summary$Species <- factor(
+  density_summary$Species,
+  levels = c(
+    "P. verrucosa",
+    "P. tuahiniensis",
+    "P. meandrina",
+    "P. grandis",
+    "P. effusa",
+    "P. acuta"
+  )
+)
+
+density_summary$SizeClass <- factor(
+  density_summary$SizeClass,
+  levels = c(
+    "0-2cm",
+    ">2cm-5cm",
+    ">5cm-14cm",
+    ">14cm"
+  )
+)
+
+density_summary$Site <- factor(
+  density_summary$Site,
+  levels = c(
+    "S2", "S3", "S4", "S5",
+    "S6", "S9", "S11",
+    "S12", "S14", "S15", "S18"
+  )
+)
+
+# Facet labels (italic species names)
+species_labs <- c(
+  "P. acuta"        = "italic('P. acuta')",
+  "P. effusa"       = "italic('P. effusa')",
+  "P. grandis"      = "italic('P. grandis')",
+  "P. meandrina"    = "italic('P. meandrina')",
+  "P. tuahiniensis" = "italic('P. tuahiniensis')",
+  "P. verrucosa"    = "italic('P. verrucosa')"
+)
+
+# Colors
+species_cols <- c(
+  "P. tuahiniensis" = "#D55E00",
+  "P. meandrina"    = "#0072B2",
+  "P. verrucosa"    = "#E69F00",
+  "P. grandis"      = "#56B4E9",
+  "P. effusa"       = "#009E73",
+  "P. acuta"        = "#e63946"
+)
+
+# Legend labels (italic species names)
+species_labels <- setNames(
+  lapply(
+    names(species_cols),
+    function(x) bquote(italic(.(x)))
+  ),
+  names(species_cols)
+)
+
+# Plot
+pocillopora.density.plot <- ggplot(
+  density_summary,
+  aes(
+    x = Site,
+    y = MeanDensity,
+    fill = Species
+  )
+) +
+  geom_col() +
+  geom_errorbar(
+    aes(
+      ymin = MeanDensity - SE,
+      ymax = MeanDensity + SE
+    ),
+    width = 0.2
+  ) +
+  facet_grid(
+    Species ~ SizeClass,
+    scales = "free",
+    labeller = labeller(
+      Species = as_labeller(
+        species_labs,
+        label_parsed
+      )
+    )
+  ) +
+  scale_fill_manual(
+    values = species_cols,
+    labels = species_labels
+  ) +
+  labs(
+    x = "Site",
+    y = expression("Density (colonies m"^{-2} * ")"),
+    fill = "Species"
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1
+    ),
+    strip.background = element_rect(
+      fill = "gray",
+      color = "black"
+    ),
+    strip.text.x = element_text(
+      color = "black",
+      face = "bold"
+    ),
+    strip.text.y = element_text(
+      color = "black",
+      face = "italic"
+    ),
+    legend.position = "none"
+  )
+
+pocillopora.density.plot
+
+ggsave(
+  filename = "Output/pocillopora.density.plot.jpg",
+  plot = pocillopora.density.plot,
+  device = "jpg",
+  width = 8,
+  height = 9,
+  units = "in"
+)
+
+#write out density data
+write.csv(density_summary,"Data/pocillopora.density.csv")
+
 ```
 Moorea site map
 ```{r}
