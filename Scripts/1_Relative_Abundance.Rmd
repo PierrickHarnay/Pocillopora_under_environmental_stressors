@@ -312,6 +312,28 @@ data %>%
 # Confirm no unassigned sites
 cat("Samples with no shore assigned:", sum(is.na(data$Shore)), "\n")
 
+str(data)
+
+#Species × SizeClass density by site
+site_species_size_density <- data %>%
+  count(
+    Site,
+    Species,
+    SizeClass,
+    name = "N_colonies"
+  ) %>%
+  mutate(
+    Density_m2 = N_colonies / 75
+  )
+
+site_species_size_density
+
+site_species_size_density <- site_species_size_density %>%
+  rename(site.name = Site)
+
+write.csv(site_species_size_density, "Output/pocillopora_site_species_size_density.csv")
+
+
 # Calculate density of colonies per m2
 transect_area <- 25
 
@@ -803,6 +825,9 @@ benthic_rel_site <- data_benthic %>%
     Site = factor(Site, levels = site_order),
     Benthic.Name = factor(Benthic.Name, levels = names(color_mapping))
   )
+
+write.csv(benthic_rel_site, "Data/data_benthic_clean.csv")
+
 
 # Number of unique quadrats per Shore and Site
 site_n <- data_benthic %>%

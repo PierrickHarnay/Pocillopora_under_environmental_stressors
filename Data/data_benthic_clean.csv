@@ -1,0 +1,159 @@
+"","Shore","Site","Benthic.Group","Benthic.Name","Count","RelAbundance"
+"1","North","S2","Algae","Macroalgae",2240,0.228571428571429
+"2","North","S3","Algae","Macroalgae",1415,0.202142857142857
+"3","East","S6","Algae","Macroalgae",1190,0.195081967213115
+"4","West","S12","Algae","Macroalgae",942,0.1471875
+"5","West","S14","Algae","Macroalgae",860,0.116216216216216
+"6","East","S9","Algae","Macroalgae",798,0.103636363636364
+"7","North","S5","Algae","Macroalgae",416,0.054025974025974
+"8","West","S18","Algae","Macroalgae",243,0.0476470588235294
+"9","West","S15","Algae","Macroalgae",276,0.0363157894736842
+"10","East","S11","Algae","Macroalgae",180,0.0253521126760563
+"11","North","S4","Algae","Macroalgae",67,0.00858974358974359
+"12","East","S9","CTB","Rubble, Crustose Coralline Algae, Turf",6178,0.802337662337662
+"13","North","S2","CTB","Rubble, Crustose Coralline Algae, Turf",6884,0.702448979591837
+"14","East","S11","CTB","Rubble, Crustose Coralline Algae, Turf",4212,0.593239436619718
+"15","North","S3","CTB","Rubble, Crustose Coralline Algae, Turf",3911,0.558714285714286
+"16","West","S18","CTB","Rubble, Crustose Coralline Algae, Turf",2825,0.553921568627451
+"17","North","S5","CTB","Rubble, Crustose Coralline Algae, Turf",3706,0.481298701298701
+"18","West","S14","CTB","Rubble, Crustose Coralline Algae, Turf",3472,0.469189189189189
+"19","West","S15","CTB","Rubble, Crustose Coralline Algae, Turf",3476,0.457368421052632
+"20","West","S12","CTB","Rubble, Crustose Coralline Algae, Turf",2465,0.38515625
+"21","East","S6","CTB","Rubble, Crustose Coralline Algae, Turf",2012,0.32983606557377
+"22","North","S4","CTB","Rubble, Crustose Coralline Algae, Turf",1838,0.235641025641026
+"23","East","S6","Hard_Coral","Porites",753,0.12344262295082
+"24","West","S15","Hard_Coral","Montipora",805,0.105921052631579
+"25","East","S11","Hard_Coral","Porites",745,0.104929577464789
+"26","East","S6","Hard_Coral","Montipora",585,0.0959016393442623
+"27","West","S18","Hard_Coral","Montipora",484,0.0949019607843137
+"28","West","S12","Hard_Coral","Montipora",588,0.091875
+"29","West","S18","Hard_Coral","Porites",445,0.0872549019607843
+"30","West","S15","Hard_Coral","Porites",650,0.0855263157894737
+"31","West","S14","Hard_Coral","Pocillopora",595,0.0804054054054054
+"32","North","S5","Hard_Coral","Porites",609,0.0790909090909091
+"33","West","S14","Hard_Coral","Porites",558,0.0754054054054054
+"34","West","S14","Hard_Coral","Montipora",470,0.0635135135135135
+"35","West","S15","Hard_Coral","Pocillopora",406,0.0534210526315789
+"36","West","S12","Hard_Coral","Porites",316,0.049375
+"37","West","S12","Hard_Coral","Pocillopora",276,0.043125
+"38","North","S4","Hard_Coral","Porites",311,0.0398717948717949
+"39","East","S11","Hard_Coral","Montipora",203,0.0285915492957746
+"40","North","S5","Hard_Coral","Montipora",208,0.027012987012987
+"41","North","S3","Hard_Coral","Porites",186,0.0265714285714286
+"42","North","S5","Hard_Coral","Pocillopora",181,0.0235064935064935
+"43","North","S4","Hard_Coral","Montipora",166,0.0212820512820513
+"44","North","S2","Hard_Coral","Porites",168,0.0171428571428571
+"45","East","S11","Hard_Coral","Pocillopora",113,0.0159154929577465
+"46","West","S18","Hard_Coral","Pocillopora",73,0.0143137254901961
+"47","East","S9","Hard_Coral","Porites",91,0.0118181818181818
+"48","North","S2","Hard_Coral","Pocillopora",89,0.00908163265306122
+"49","North","S4","Hard_Coral","Pocillopora",61,0.00782051282051282
+"50","North","S3","Hard_Coral","Pocillopora",43,0.00614285714285714
+"51","East","S6","Hard_Coral","Pocillopora",34,0.00557377049180328
+"52","North","S4","Hard_Coral","Acropora",42,0.00538461538461538
+"53","West","S14","Hard_Coral","Gardineroseris",33,0.00445945945945946
+"54","East","S9","Hard_Coral","Pocillopora",33,0.00428571428571429
+"55","West","S15","Hard_Coral","Acropora",29,0.00381578947368421
+"56","North","S3","Hard_Coral","Montipora",26,0.00371428571428571
+"57","North","S5","Hard_Coral","Acropora",28,0.00363636363636364
+"58","North","S2","Hard_Coral","Acropora",27,0.00275510204081633
+"59","West","S15","Hard_Coral","Leptoseris",16,0.00210526315789474
+"60","West","S14","Hard_Coral","Acropora",11,0.00148648648648649
+"61","West","S18","Hard_Coral","Psammocora",7,0.00137254901960784
+"62","East","S6","Hard_Coral","Psammocora",8,0.00131147540983607
+"63","West","S15","Hard_Coral","Pavona",9,0.00118421052631579
+"64","West","S15","Hard_Coral","Psammocora",9,0.00118421052631579
+"65","North","S5","Hard_Coral","Unidentified coral",9,0.00116883116883117
+"66","North","S3","Hard_Coral","Acropora",6,0.000857142857142857
+"67","North","S3","Hard_Coral","Unidentified coral",5,0.000714285714285714
+"68","West","S14","Hard_Coral","Psammocora",5,0.000675675675675676
+"69","West","S15","Hard_Coral","Acanthastrea",5,0.000657894736842105
+"70","West","S15","Hard_Coral","Gardineroseris",5,0.000657894736842105
+"71","East","S6","Hard_Coral","Sandalolitha",4,0.000655737704918033
+"72","West","S14","Hard_Coral","Leptastrea",4,0.000540540540540541
+"73","West","S15","Hard_Coral","Leptastrea",4,0.000526315789473684
+"74","North","S5","Hard_Coral","Leptoseris",4,0.000519480519480519
+"75","East","S9","Hard_Coral","Montastraea",4,0.000519480519480519
+"76","East","S6","Hard_Coral","Pavona",3,0.000491803278688525
+"77","West","S12","Hard_Coral","Pavona",3,0.00046875
+"78","West","S12","Hard_Coral","Unidentified coral",3,0.00046875
+"79","East","S11","Hard_Coral","Acropora",3,0.000422535211267606
+"80","East","S11","Hard_Coral","Unidentified coral",3,0.000422535211267606
+"81","North","S2","Hard_Coral","Montipora",4,0.000408163265306122
+"82","West","S14","Hard_Coral","Leptoseris",3,0.000405405405405405
+"83","West","S14","Hard_Coral","Lobophyllia",3,0.000405405405405405
+"84","West","S14","Hard_Coral","Unidentified coral",3,0.000405405405405405
+"85","West","S18","Hard_Coral","Leptastrea",2,0.000392156862745098
+"86","East","S9","Hard_Coral","Montipora",3,0.00038961038961039
+"87","North","S4","Hard_Coral","Cyphastrea",3,0.000384615384615385
+"88","North","S4","Hard_Coral","Unidentified coral",3,0.000384615384615385
+"89","East","S6","Hard_Coral","Unidentified coral",2,0.000327868852459016
+"90","West","S12","Hard_Coral","Acanthastrea",2,0.0003125
+"91","West","S12","Hard_Coral","Psammocora",2,0.0003125
+"92","North","S2","Hard_Coral","Unidentified coral",3,0.000306122448979592
+"93","North","S3","Hard_Coral","Gardineroseris",2,0.000285714285714286
+"94","North","S3","Hard_Coral","Psammocora",2,0.000285714285714286
+"95","East","S11","Hard_Coral","Leptoseris",2,0.00028169014084507
+"96","East","S11","Hard_Coral","Psammocora",2,0.00028169014084507
+"97","North","S5","Hard_Coral","Fungia",2,0.00025974025974026
+"98","North","S5","Hard_Coral","Leptastrea",2,0.00025974025974026
+"99","North","S5","Hard_Coral","Sandalolitha",2,0.00025974025974026
+"100","North","S2","Hard_Coral","Tubastraea",2,0.000204081632653061
+"101","West","S18","Hard_Coral","Leptoseris",1,0.000196078431372549
+"102","West","S18","Hard_Coral","Unidentified coral",1,0.000196078431372549
+"103","East","S6","Hard_Coral","Leptastrea",1,0.000163934426229508
+"104","East","S6","Hard_Coral","Leptoseris",1,0.000163934426229508
+"105","West","S12","Hard_Coral","Astreopora",1,0.00015625
+"106","East","S11","Hard_Coral","Gardineroseris",1,0.000140845070422535
+"107","West","S14","Hard_Coral","Cyphastrea",1,0.000135135135135135
+"108","West","S14","Hard_Coral","Pavona",1,0.000135135135135135
+"109","West","S15","Hard_Coral","Lobophyllia",1,0.000131578947368421
+"110","West","S15","Hard_Coral","Montastraea",1,0.000131578947368421
+"111","West","S15","Hard_Coral","Unidentified coral",1,0.000131578947368421
+"112","North","S5","Hard_Coral","Acanthastrea",1,0.00012987012987013
+"113","North","S5","Hard_Coral","Astreopora",1,0.00012987012987013
+"114","North","S5","Hard_Coral","Pachyseris",1,0.00012987012987013
+"115","North","S5","Hard_Coral","Pavona",1,0.00012987012987013
+"116","North","S5","Hard_Coral","Psammocora",1,0.00012987012987013
+"117","East","S9","Hard_Coral","Acropora",1,0.00012987012987013
+"118","East","S9","Hard_Coral","Leptoseris",1,0.00012987012987013
+"119","East","S9","Hard_Coral","Psammocora",1,0.00012987012987013
+"120","East","S9","Hard_Coral","Unidentified coral",1,0.00012987012987013
+"121","North","S4","Hard_Coral","Astreopora",1,0.000128205128205128
+"122","North","S4","Hard_Coral","Leptastrea",1,0.000128205128205128
+"123","North","S4","Hard_Coral","Leptoseris",1,0.000128205128205128
+"124","North","S2","Hard_Coral","Psammocora",1,0.000102040816326531
+"125","North","S4","Misc","Sand",5297,0.679102564102564
+"126","North","S5","Misc","Sand",2521,0.327402597402597
+"127","West","S12","Misc","Sand",1773,0.27703125
+"128","West","S15","Misc","Sand",1887,0.248289473684211
+"129","East","S6","Misc","Sand",1501,0.246065573770492
+"130","East","S11","Misc","Sand",1589,0.223802816901408
+"131","North","S3","Misc","Sand",1393,0.199
+"132","West","S18","Misc","Sand",989,0.193921568627451
+"133","West","S14","Misc","Sand",1353,0.182837837837838
+"134","East","S9","Misc","Sand",585,0.075974025974026
+"135","North","S2","Misc","Sand",370,0.0377551020408163
+"136","West","S18","Misc","Millepora",28,0.00549019607843137
+"137","East","S11","Misc","Millepora",34,0.0047887323943662
+"138","West","S12","Misc","Millepora",22,0.0034375
+"139","West","S14","Misc","Unknown",25,0.00337837837837838
+"140","West","S15","Misc","Giant clam",12,0.00157894736842105
+"141","North","S3","Misc","Millepora",11,0.00157142857142857
+"142","East","S11","Misc","Giant clam",8,0.00112676056338028
+"143","North","S2","Misc","Unknown",11,0.00112244897959184
+"144","East","S6","Misc","Giant clam",6,0.000983606557377049
+"145","West","S12","Misc","Unknown",6,0.0009375
+"146","North","S5","Misc","Unknown",7,0.000909090909090909
+"147","West","S15","Misc","Millepora",6,0.000789473684210526
+"148","East","S11","Misc","Unknown",5,0.000704225352112676
+"149","North","S4","Misc","Giant clam",5,0.000641025641025641
+"150","North","S4","Misc","Unknown",4,0.000512820512820513
+"151","West","S14","Misc","Giant clam",3,0.000405405405405405
+"152","West","S15","Misc","Unknown",2,0.000263157894736842
+"153","East","S9","Misc","Giant clam",2,0.00025974025974026
+"154","East","S9","Misc","Unknown",2,0.00025974025974026
+"155","West","S18","Misc","Giant clam",1,0.000196078431372549
+"156","West","S18","Misc","Unknown",1,0.000196078431372549
+"157","West","S12","Misc","Giant clam",1,0.00015625
+"158","North","S2","Misc","Giant clam",1,0.000102040816326531
