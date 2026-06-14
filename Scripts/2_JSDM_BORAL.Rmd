@@ -2262,6 +2262,31 @@ ggplot(X_long, aes(predictor, response, fill = beta)) +
 
 
 ```
+CI boral_fit
+```{r}
+# 95% HPD credible intervals
+beta_ci <- boral_fit$hpdintervals$X.coefs
+beta_med <- boral_fit$X.coefs.median
+beta_summary <- as.data.frame(as.table(beta_med)) %>%
+  rename(
+    response = resp,
+    predictor = coefficients,
+    beta_median = Freq
+  ) %>%
+  mutate(
+    ci_lower = as.vector(beta_ci[, , "lower"]),
+    ci_upper = as.vector(beta_ci[, , "upper"]),
+    excludes_zero = ci_lower > 0 | ci_upper < 0,
+    direction = case_when(
+      ci_lower > 0 ~ "positive",
+      ci_upper < 0 ~ "negative",
+      TRUE ~ "uncertain"
+    )
+  )
+
+beta_summary
+
+```
 12.2 Residual correlations
 ```{r}
 res_cor <- get.residual.cor(boral_fit)
@@ -2715,6 +2740,7 @@ ggplot(E_long, aes(x = site.name, y = taxon, fill = env_influence)) +
   )
 
 ```
+
 decomposition by predictor
 ```{r}
 
