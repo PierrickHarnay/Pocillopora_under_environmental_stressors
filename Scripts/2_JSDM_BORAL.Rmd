@@ -23,6 +23,7 @@ library(geosphere)
 library(dplyr)
 library(ggplot2)
 library(scales)
+library(corrplot)
 
 
 ```
@@ -30,7 +31,7 @@ library(scales)
 load and visualize coral density data
 ```{r}
 data <- read.csv("Output/pocillopora_site_species_size_density.csv") %>%
-  select("site.name","Species","SizeClass","Density_m2")
+  select("site.name","Species","SizeClass","Density_m2", "N_colonies")
 
 str(data)
 
@@ -1945,7 +1946,7 @@ env_vars <- c(
   )
 
 #env_predictors_raw <- env_predictors_raw %>%
- # select(-Hard_Coral, -max_temp_br,-Sand, -Macroalgae)
+#  select(-wave_P_max, -Sand, -Macroalgae)
   
 
 ```
@@ -2383,20 +2384,20 @@ ggplot(site_lv, aes(x = lv1, y = lv2, label = site.name, color = shore)) +
 site_lv_env <- site_lv %>%
   left_join(X_env_aligned, by = "site.name")   # both have 'site' = S11, S12, ...
 
-ggplot(site_lv_env, aes(x = lv1, y = lv2)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey85") +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "grey85") +
-  geom_point(aes(color = wave_P_max, shape = shore), size = 3) +
-  geom_text(aes(label = site.name), nudge_y = 0.05, size = 3) +
-  scale_color_viridis_c(option = "plasma") +
-  theme_minimal() +
-  labs(
-    title = "Site ordination with max wave power",
-    x = "Latent Variable 1 (LV1)",
-    y = "Latent Variable 2 (LV2)",
-    color = "Average Wave Power\n(z-score)",
-    shape = "Shore"
-  )
+# ggplot(site_lv_env, aes(x = lv1, y = lv2)) +
+#   geom_hline(yintercept = 0, linetype = "dashed", color = "grey85") +
+#   geom_vline(xintercept = 0, linetype = "dashed", color = "grey85") +
+#   geom_point(aes(color = wave_P_max, shape = shore), size = 3) +
+#   geom_text(aes(label = site.name), nudge_y = 0.05, size = 3) +
+#   scale_color_viridis_c(option = "plasma") +
+#   theme_minimal() +
+#   labs(
+#     title = "Site ordination with max wave power",
+#     x = "Latent Variable 1 (LV1)",
+#     y = "Latent Variable 2 (LV2)",
+#     color = "Average Wave Power\n(z-score)",
+#     shape = "Shore"
+#   )
 
 
 
