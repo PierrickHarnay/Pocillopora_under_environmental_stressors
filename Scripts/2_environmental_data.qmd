@@ -1,0 +1,1562 @@
+---
+title: "environmental_data"
+subtitle: "Statistical analysis and visualization pipeline"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    embed-resources: true
+    fig-width: 10
+    fig-height: 7
+execute:
+  warning: false
+  message: false
+editor: visual
+---
+
+## 
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(reshape2)
+library(geosphere)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(corrplot)
+library(patchwork)
+library(ggh4x)
+
+```
+
+1.  load and visualize coral density data
+
+```{r}
+data <- read.csv("../Output/pocillopora_site_species_size_density.csv") %>%
+  select("site.name","Species","SizeClass","Density_m2", "N_colonies")
+
+str(data)
+
+data$SizeClass <- factor(
+  data$SizeClass,
+  levels = c("0-2cm", ">2cm-5cm", ">5cm-14cm", ">14cm")
+)
+
+data$site.name <- factor(
+  data$site.name,
+  levels = c("S2", "S3", "S4", "S5", "S6", "S9", "S11", "S12", "S14", "S15", "S18" )
+)
+# Set factor orders
+data$Species <- factor(
+  data$Species,
+  levels = c(
+    "P. verrucosa",
+    "P. tuahiniensis",
+    "P. meandrina",
+    "P. grandis",
+    "P. effusa",
+    "P. acuta"
+  )
+)
+
+data$SizeClass <- factor(
+  data$SizeClass,
+  levels = c(
+    "0-2cm",
+    ">2cm-5cm",
+    ">5cm-14cm",
+    ">14cm"
+  )
+)
+
+# Facet labels (italic species names)
+species_labs <- c(
+  "P. acuta"        = "italic('P. acuta')",
+  "P. effusa"       = "italic('P. effusa')",
+  "P. grandis"      = "italic('P. grandis')",
+  "P. meandrina"    = "italic('P. meandrina')",
+  "P. tuahiniensis" = "italic('P. tuahiniensis')",
+  "P. verrucosa"    = "italic('P. verrucosa')"
+)
+
+# Colors
+species_cols <- c(
+  "P. tuahiniensis" = "#D55E00",
+  "P. meandrina"    = "#0072B2",
+  "P. verrucosa"    = "#E69F00",
+  "P. grandis"      = "#56B4E9",
+  "P. effusa"       = "#009E73",
+  "P. acuta"        = "#e63946"
+)
+
+# Legend labels (italic species names)
+species_labels <- setNames(
+  lapply(
+    names(species_cols),
+    function(x) bquote(italic(.(x)))
+  ),
+  names(species_cols)
+)
+
+# Plot
+pocillopora.density.plot <- ggplot(
+  data,
+  aes(
+    x = site.name,
+    y = Density_m2,
+    fill = Species
+  )
+) +
+  geom_col() +
+  facet_grid(
+    Species ~ SizeClass,
+    scales = "free",
+    labeller = labeller(
+      Species = as_labeller(
+        species_labs,
+        label_parsed)
+    )
+  ) +
+  scale_fill_manual(
+    values = species_cols,
+    labels = species_labels
+  ) +
+  labs(
+    x = "Site",
+    y = expression("Density (colonies m"^{-2} * ")"),
+    fill = "Species"
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1
+    ),
+    strip.background = element_rect(
+      fill = "gray",
+      color = "black"
+    ),
+    strip.text.x = element_text(
+      color = "black",
+      face = "bold"
+    ),
+    strip.text.y = element_text(
+      color = "black",
+      face = "italic"
+    ),
+    legend.position = "none"
+  )
+
+pocillopora.density.plot
+
+
+```
+
+2.  Site table: list site locations and assign shore
+
+```{r}
+sites <- tribble(
+  ~long,        ~lat,         ~site.name,
+  -149.8764837, -17.48523962, "S1",
+  -149.8526452, -17.48223933, "S2",
+  -149.8344367, -17.47810177, "S3",
+  -149.8076461, -17.47569278, "S4",
+  -149.7835691, -17.47304608, "S5",
+  -149.7614724, -17.50575957, "S6",
+  -149.7845548, -17.56535312, "S9",
+  -149.804473,  -17.60276752, "S11",
+  -149.8478059, -17.59508584, "S12",
+  -149.8837824, -17.56500936, "S14",
+  -149.9007712, -17.54654008, "S15",
+  -149.9239404, -17.49378121, "S18"
+)
+
+sites <- sites %>%
+  mutate(
+    shore = case_when(
+      site.name %in% c("S1","S2","S3","S4","S5") ~ "North",
+      site.name %in% c("S6","S9","S11") ~ "East",
+      site.name %in% c("S12","S14","S15", "S18") ~ "West"
+    ),
+    shore = factor(shore, levels = c("West","North","East"))
+  )
+
+```
+
+# 3. LTER Lagoon temperature data
+
+# Maximum temperature
+
+Hypothesis: Sites experiencing higher maximum temperatures will support lower densities of thermally sensitive Pocillopora species and life stages because episodic thermal stress increases bleaching, mortality, and physiological impairment. This effect is expected to be strongest for P. effusa, which is predicted to be the most thermally sensitive species.
+
+# Daily temperature range
+
+Hypothesis: Sites with greater daily temperature variability will support higher densities of Pocillopora species and life stages because exposure to fluctuating temperatures may enhance thermal tolerance through physiological acclimatization. This protective effect is expected to be strongest for the thermally sensitive P. effusa.
+
+Lagoon temperature: site-level from SBE56 array Temperature
+
+3.1 Downloading temperature data
+
+```{r}
+# Package ID: knb-lter-mcr.1045.6 Cataloging System:https://pasta.edirepository.org.
+# Data set title: MCR LTER: Coral Reef: Island-Wide Lagoon Benthic Water Temperature, ongoing since 2021.
+# Data set creator:    - Moorea Coral Reef LTER 
+# Data set creator:  Tom Adam - Moorea Coral Reef LTER 
+# Data set creator:  James Hench - Moorea Coral Reef LTER 
+# Data set creator:  Andrew Brooks - Moorea Coral Reef LTER 
+# Metadata Provider:    - Moorea Coral Reef LTER 
+# Contact:    - Information Manager Moorea Coral Reef LTER  - mcrlter@msi.ucsb.edu
+# Stylesheet v2.15 for metadata conversion into program: John H. Porter, Univ. Virginia, jporter@virginia.edu      
+# Uncomment the following lines to have R clear previous work, or set a working directory
+# rm(list=ls())      
+
+# setwd("C:/users/my_name/my_dir")       
+
+options(HTTPUserAgent = "EDI_CodeGen")
+
+# Local cache directory for EDI raw data
+edi_cache <- "Data/EDI"
+dir.create(edi_cache, showWarnings = FALSE, recursive = TRUE)
+
+# Downloads from EDI only if local copy doesn't exist; returns the local path
+get_edi_file <- function(url, local_path) {
+  if (!file.exists(local_path)) {
+    message("Downloading from EDI: ", basename(local_path))
+    try(
+      download.file(url, local_path, method = "curl",
+                    extra = paste0(' -A "', getOption("HTTPUserAgent"), '"')),
+      silent = TRUE
+    )
+    if (!file.exists(local_path) || file.size(local_path) == 0) {
+      download.file(url, local_path, method = "auto")
+    }
+  } else {
+    message("Reading from local cache: ", local_path)
+  }
+  local_path
+}
+
+## ---------- 1. Daily lagoon temperature (rename dt1 → temp_daily) ----------
+
+temp_url  <- "https://pasta.lternet.edu/package/data/eml/knb-lter-mcr/1045/6/7a8090507e95d40ba98d837388f7c506"
+temp_file <- get_edi_file(temp_url, file.path(edi_cache, "mcr_lagoon_temp_daily.csv"))
+
+lagoon_temp_daily <- read.csv(
+  temp_file,
+  header   = FALSE,
+  skip     = 1,
+  sep      = ",",
+  quote    = '"',
+  col.names = c(
+    "site",
+    "date_local",
+    "min_temp_c",
+    "max_temp_c",
+    "median_temp_c",
+    "mean_temp_c"
+  ),
+  check.names = TRUE
+)
+
+## Type fixes / parsing (no attach)
+
+lagoon_temp_daily <- lagoon_temp_daily %>%
+  mutate(
+    site = as.factor(site),
+    # parse date
+    date_local = as.Date(date_local, format = "%Y-%m-%d"),
+    # numeric temps
+    across(
+      c(min_temp_c, max_temp_c, median_temp_c, mean_temp_c),
+      ~ suppressWarnings(as.numeric(.))
+    )
+  )
+
+str(lagoon_temp_daily)
+summary(lagoon_temp_daily$site)
+summary(lagoon_temp_daily$mean_temp_c)
+
+#plot mean data to look for outliers
+ggplot(lagoon_temp_daily, aes(x = date_local, y = mean_temp_c)) +
+  geom_line(color = "steelblue", linewidth = 0.3) +
+  facet_wrap(~ site, scales = "free_y", ncol = 7) +
+  theme_bw(base_size = 9) +
+  labs(
+    title = "Daily Mean Temperature at All Lagoon Sites",
+    x = "Date",
+    y = "Mean Temp (°C)"
+  )
+
+#plot min data to look for outliers
+ggplot(lagoon_temp_daily, aes(x = date_local, y = min_temp_c)) +
+  geom_line(color = "steelblue", linewidth = 0.3) +
+  facet_wrap(~ site, scales = "free_y", ncol = 7) +
+  theme_bw(base_size = 9) +
+  labs(
+    title = "Daily Minimum Temperature at All Lagoon Sites",
+    x = "Date",
+    y = "Minimum Temp (°C)"
+  )
+
+#plot max data to look for outliers
+ggplot(lagoon_temp_daily, aes(x = date_local, y = max_temp_c)) +
+  geom_line(color = "steelblue", linewidth = 0.3) +
+  facet_wrap(~ site, scales = "free_y", ncol = 7) +
+  theme_bw(base_size = 9) +
+  labs(
+    title = "Daily Maximum Temperature at All Lagoon Sites",
+    x = "Date",
+    y = "Maximum Temp (°C)"
+  )
+
+
+
+## ---------- 2. Site–filename lookup (rename dt2 → temp_files) ----------
+
+temp_meta_url  <- "https://pasta.lternet.edu/package/data/eml/knb-lter-mcr/1045/6/aa66754bc0fec207b813ee970389ad93"
+temp_meta_file <- get_edi_file(temp_meta_url, file.path(edi_cache, "mcr_lagoon_temp_sites.csv"))
+
+lagoon_temp_files <- read.csv(
+  temp_meta_file,
+  header   = FALSE,
+  skip     = 1,
+  sep      = ",",
+  quote    = '"',
+  col.names = c("site_code", "filename"),
+  check.names = TRUE
+)
+
+lagoon_temp_files <- lagoon_temp_files %>%
+  mutate(
+    site_code = as.factor(site_code),
+    filename  = as.factor(filename)
+  )
+
+str(lagoon_temp_files)
+summary(lagoon_temp_files$site_code)
+
+
+```
+
+3.2 Summarize temperature data
+
+```{r}
+lagoon_temp_summary <- lagoon_temp_daily %>%
+  group_by(site) %>%
+  summarise(
+    mean_temp        = mean(mean_temp_c, na.rm = TRUE),
+    median_temp      = median(median_temp_c, na.rm = TRUE),
+    max_temp         = max(max_temp_c, na.rm = TRUE),
+    p95_temp         = quantile(max_temp_c, 0.95, na.rm = TRUE),
+    sd_temp          = sd(mean_temp_c, na.rm = TRUE),
+    mean_daily_range = mean(max_temp_c - min_temp_c, na.rm = TRUE),
+    freq_above_30C   = mean(max_temp_c > 30, na.rm = TRUE),
+    n_days           = sum(!is.na(mean_temp_c)),
+    .groups = "drop"
+  )
+
+lagoon_temp_summary
+
+lagoon_coords <- tribble(
+  ~site,   ~long,      ~lat,
+  # Backbone B01–B35
+  "B01",   -149.89,    -17.485,
+  "B02",   -149.879,   -17.484,
+  "B03",   -149.868,   -17.487,
+  "B04",   -149.85,    -17.482,
+  "B05",   -149.833,   -17.479,
+  "B06",   -149.817,   -17.475,
+  "B07",   -149.806,   -17.475,
+  "B08",   -149.793,   -17.475,
+  "B09",   -149.784,   -17.473,
+  "B10",   -149.761,   -17.503,
+  "B10.5", -149.763,   -17.508,
+  "B11",   -149.765,   -17.520,
+  "B12",   -149.765,   -17.530,
+  "B13",   -149.764,   -17.535,
+  "B14",   -149.767,   -17.541,
+  "B15",   -149.783,   -17.561,
+  "B16",   -149.787,   -17.569,
+  "B17",   -149.789,   -17.580,
+  "B18",   -149.791,   -17.587,
+  "B19",   -149.799,   -17.599,
+  "B20",   -149.808,   -17.603,
+  "B21",   -149.817,   -17.603,
+  "B22",   -149.827,   -17.603,
+  "B23",   -149.836,   -17.599,
+  "B24",   -149.853,   -17.593,
+  "B25",   -149.861,   -17.590,
+  "B26",   -149.867,   -17.585,
+  "B27",   -149.882,   -17.568,
+  "B28",   -149.885,   -17.562,
+  "B29",   -149.892,   -17.555,
+  "B30",   -149.897,   -17.550,
+  "B31",   -149.902,   -17.545,
+  "B32",   -149.913,   -17.535,
+  "B33",   -149.922,   -17.513,
+  "B34",   -149.924,   -17.504,
+  "B35",   -149.923,   -17.495,
+
+  # North transect N01–N05
+  "N01",   -149.84593, -17.48063,
+  "N02",   -149.84624, -17.48011,
+  "N03",   -149.84657, -17.47915,
+  "N04",   -149.84544, -17.48146,
+  "N05",   -149.84500, -17.48200,
+
+  # West transect W01–W05
+  "W01",   -149.86800, -17.58630,
+  "W02",   -149.86721, -17.58585,
+  "W04",   -149.86654, -17.58431,
+  "W05",   -149.86600, -17.58300,
+
+  # East transect E01–E04
+  "E01",   -149.76600, -17.54090,
+  "E02",   -149.76600, -17.54110,
+  "E03",   -149.76800, -17.54030,
+  "E04",   -149.76800, -17.53970
+)
+
+lagoon_temp_full <- lagoon_temp_summary %>%
+  left_join(lagoon_coords, by = "site")
+
+```
+
+3.3 Map temperature data to coral sites
+
+```{r}
+ph_coords  <- as.matrix(sites[, c("long", "lat")])
+temp_coords <- as.matrix(lagoon_temp_full[, c("long", "lat")])
+
+dist_mat_temp <- distm(ph_coords, temp_coords, fun = distHaversine)
+
+nn_temp_idx <- apply(dist_mat_temp, 1, which.min)
+dist_to_temp_m <- apply(dist_mat_temp, 1, min)
+
+#join
+sites_temp <- sites %>%
+  mutate(
+    temp_site         = lagoon_temp_full$site[nn_temp_idx],
+    temp_long         = lagoon_temp_full$long[nn_temp_idx],
+    temp_lat          = lagoon_temp_full$lat[nn_temp_idx],
+    mean_temp_br      = lagoon_temp_full$mean_temp[nn_temp_idx],
+    median_temp_br    = lagoon_temp_full$median_temp[nn_temp_idx],
+    max_temp_br       = lagoon_temp_full$max_temp[nn_temp_idx],
+    p95_temp_br       = lagoon_temp_full$p95_temp[nn_temp_idx],
+    daily_range_br    = lagoon_temp_full$mean_daily_range[nn_temp_idx],
+    sd_temp_br        = lagoon_temp_full$sd_temp[nn_temp_idx],
+    freq_above_30C_br = lagoon_temp_full$freq_above_30C[nn_temp_idx],
+    dist_to_temp_m    = dist_to_temp_m
+  )
+
+#inspect
+sites_temp %>%
+  select(site.name, shore, temp_site, dist_to_temp_m,
+         mean_temp_br, max_temp_br, p95_temp_br, daily_range_br)
+
+str(sites_temp)
+
+```
+
+3.4 View temperature data daily
+
+```{r}
+#Extract mapping: coral site.name → temp_site
+temp_map <- sites_temp %>%
+  select(site.name, temp_site)
+
+#Filter lagoon_temp_daily to only the 11 temp sites
+lagoon_temp_coral <- lagoon_temp_daily %>%
+  filter(site %in% unique(temp_map$temp_site)) %>%
+  mutate(daily_range_c = max_temp_c - min_temp_c)
+
+#Join so each row knows its coral site.name
+lagoon_temp_joined <- lagoon_temp_coral %>%
+  left_join(temp_map, by = c("site" = "temp_site")) %>%
+  # reorder levels if you want S11 → S36 in order
+  mutate(site.name = factor(site.name, levels = sort(unique(site.name))))
+
+## ---- CHECK RESULT
+# head(lagoon_temp_joined)
+
+temp_max <- ggplot(
+  lagoon_temp_joined %>% filter(!is.na(max_temp_c)),
+  aes(x = date_local, y = max_temp_c, color = site.name)
+) +
+  geom_point(size = 0.8, alpha = 0.7) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_bw(base_size = 12) +
+  labs(
+    title = "Daily Maximum Temperature at Coral Sites",
+    x = "Date",
+    y = "Maximum Temperature (°C)",
+    color = "Coral Site"
+  )
+
+
+
+# Geographic site order and shore colour palette
+site_order_temp <- c("S2","S3","S4","S5","S6","S9","S11","S12","S14","S15","S18")
+shore_cols      <- c(North = "#4BACC6", East = "#70AD47", West = "#C55A94")
+
+# Add shore labels and restrict to survey sites
+df_temp <- lagoon_temp_joined |>
+  filter(site.name %in% site_order_temp) |>
+  mutate(
+    site.name = factor(site.name, levels = site_order_temp),
+    Shore = case_when(
+      site.name %in% c("S2","S3","S4","S5")    ~ "North",
+      site.name %in% c("S6","S9","S11")         ~ "East",
+      site.name %in% c("S12","S14","S15","S18") ~ "West"
+    ),
+    Shore = factor(Shore, levels = c("North","East","West"))
+  )
+
+# Weekly aggregation for smoother ribbon
+df_weekly_raw <- df_temp |>
+  mutate(week = lubridate::floor_date(date_local, "week")) |>
+  group_by(Shore, site.name, week) |>
+  summarise(
+    wk_min  = mean(min_temp_c,  na.rm = TRUE),
+    wk_max  = mean(max_temp_c,  na.rm = TRUE),
+    wk_mean = mean(mean_temp_c, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Complete weekly sequence within each site's own range so that data gaps
+# become explicit NA rows. geom_line and geom_ribbon break at NA rather
+# than interpolating across missing periods (e.g. S9's missing year 2022-2023).
+df_weekly <- df_weekly_raw |>
+  group_by(site.name, Shore) |>
+  complete(week = seq(min(week), max(week), by = "week")) |>
+  ungroup()
+
+# Shore-coloured facet strips for ribbon panel
+strip_fills <- c(
+  alpha("#4BACC6", 0.35),  # North (×4 sites)
+  alpha("#70AD47", 0.35),  # East  (×3 sites)
+  alpha("#C55A94", 0.35)   # West  (×4 sites)
+)
+
+# --- Panel A: Temperature envelope ribbon (weekly min–max, mean line) ---
+pA <- ggplot(df_weekly, aes(x = week)) +
+  geom_ribbon(aes(ymin = wk_min, ymax = wk_max, fill = Shore),
+              alpha = 0.45) +
+  geom_line(aes(y = wk_mean, color = Shore), linewidth = 0.4) +
+  facet_grid2(
+    site.name ~ .,
+    scales = "fixed",
+    strip = strip_themed(
+      background_y = elem_list_rect(
+        fill  = strip_fills[as.integer(
+          factor(c(rep("North",4), rep("East",3), rep("West",4)),
+                 levels = c("North","East","West")))],
+        color = "gray40"
+      ),
+      text_y = elem_list_text(color = "black", face = "bold", size = 7)
+    )
+  ) +
+  scale_fill_manual(values  = shore_cols) +
+  scale_color_manual(values = shore_cols) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y",
+               expand = expansion(mult = 0.01)) +
+  scale_y_continuous(breaks = seq(24, 32, 2)) +
+  labs(tag = "A",
+       title = "Daily temperature envelope (weekly mean ± range)",
+       x = NULL, y = "Temperature (°C)") +
+  theme_bw(base_size = 10) +
+  theme(
+    legend.position   = "none",
+    strip.text.y      = element_text(angle = 0, hjust = 0.5),
+    panel.spacing.y   = unit(0.05, "cm"),
+    panel.grid.minor  = element_blank(),
+    axis.text.x       = element_text(size = 8),
+    axis.text.y       = element_text(size = 7),
+    plot.title        = element_text(size = 9, face = "bold"),
+    plot.tag          = element_text(face = "bold", size = 12),
+    plot.margin       = margin(4, 4, 4, 4)
+  )
+
+# Site-level means for labels
+site_means <- df_temp |>
+  group_by(Shore, site.name) |>
+  summarise(mean_dr = mean(daily_range_c, na.rm = TRUE), .groups = "drop")
+
+# --- Panel B: Daily range violin + boxplot ---
+pB <- ggplot(df_temp, aes(y = site.name, x = daily_range_c, fill = Shore)) +
+  geom_violin(trim = TRUE, alpha = 0.65, linewidth = 0.3,
+              color = "gray30", scale = "width") +
+  geom_boxplot(width = 0.18, outlier.shape = NA,
+               color = "gray20", fill = "white", linewidth = 0.4) +
+  geom_point(data = site_means,
+             aes(x = mean_dr, y = site.name),
+             shape = 23, size = 2.5, fill = "white",
+             color = "gray20", stroke = 0.6) +
+  geom_text(data = site_means,
+            aes(x = 3.4, y = site.name,
+                label = sprintf("%.2f°C", mean_dr)),
+            hjust = 1, vjust = 2, size = 2.8, color = "gray25") +
+  # Shore background shading
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 7.5, ymax = 11.5,
+           alpha = 0.06, fill = shore_cols["North"]) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 4.5, ymax = 7.5,
+           alpha = 0.06, fill = shore_cols["East"]) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.5, ymax = 4.5,
+           alpha = 0.06, fill = shore_cols["West"]) +
+  # Shore bracket labels
+  annotate("text", x = 3.55, y = 10,   label = "North", angle = -90,
+           size = 3, fontface = "bold", color = shore_cols["North"],
+           hjust = 0.5, vjust = -0.3) +
+  annotate("text", x = 3.55, y = 6,    label = "East",  angle = -90,
+           size = 3, fontface = "bold", color = shore_cols["East"],
+           hjust = 0.5, vjust = -0.3) +
+  annotate("text", x = 3.55, y = 2.5,  label = "West",  angle = -90,
+           size = 3, fontface = "bold", color = shore_cols["West"],
+           hjust = 0.5, vjust = -0.3) +
+  scale_fill_manual(values = shore_cols) +
+  scale_x_continuous(limits = c(0, 3.55),
+                     breaks  = seq(0, 3, 1),
+                     expand  = expansion(mult = c(0.01, 0.02))) +
+  scale_y_discrete(limits = rev(site_order_temp)) +
+  coord_cartesian(xlim = c(0, 3.75), clip = "off") +
+  labs(tag = "B",
+       title = "Daily temperature range distribution",
+       x = "Daily temperature range (°C)", y = NULL) +
+  theme_bw(base_size = 10) +
+  theme(
+    legend.position     = "none",
+    panel.grid.major.y  = element_blank(),
+    panel.grid.minor    = element_blank(),
+    axis.text.y         = element_text(size = 9, face = "bold"),
+    axis.text.x         = element_text(size = 8),
+    plot.title          = element_text(size = 9, face = "bold"),
+    plot.tag            = element_text(face = "bold", size = 12),
+    plot.margin         = margin(4, 28, 4, 4)
+  )
+
+# Site-level means for max temp labels
+site_means_max <- df_temp |>
+  group_by(Shore, site.name) |>
+  summarise(mean_max = mean(max_temp_c, na.rm = TRUE), .groups = "drop")
+
+# --- Panel C: Daily max temperature violin + boxplot ---
+pC <- ggplot(df_temp |> filter(!is.na(max_temp_c)),
+             aes(y = site.name, x = max_temp_c, fill = Shore)) +
+  geom_violin(trim = TRUE, alpha = 0.65, linewidth = 0.3,
+              color = "gray30", scale = "width") +
+  geom_boxplot(width = 0.18, outlier.shape = NA,
+               color = "gray20", fill = "white", linewidth = 0.4) +
+  geom_point(data = site_means_max,
+             aes(x = mean_max, y = site.name),
+             shape = 23, size = 2.5, fill = "white",
+             color = "gray20", stroke = 0.6) +
+  geom_text(data = site_means_max,
+            aes(x = 32.8, y = site.name,
+                label = sprintf("%.2f°C", mean_max)),
+            hjust = 1, vjust = 2, size = 2.8, color = "gray25") +
+  # Shore background shading
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 7.5, ymax = 11.5,
+           alpha = 0.06, fill = shore_cols["North"]) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 4.5, ymax = 7.5,
+           alpha = 0.06, fill = shore_cols["East"]) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.5, ymax = 4.5,
+           alpha = 0.06, fill = shore_cols["West"]) +
+  # Shore bracket labels
+  annotate("text", x = 33.0, y = 10,   label = "North", angle = -90,
+           size = 3, fontface = "bold", color = shore_cols["North"],
+           hjust = 0.5, vjust = -0.3) +
+  annotate("text", x = 33.0, y = 6,    label = "East",  angle = -90,
+           size = 3, fontface = "bold", color = shore_cols["East"],
+           hjust = 0.5, vjust = -0.3) +
+  annotate("text", x = 33.0, y = 2.5,  label = "West",  angle = -90,
+           size = 3, fontface = "bold", color = shore_cols["West"],
+           hjust = 0.5, vjust = -0.3) +
+  scale_fill_manual(values = shore_cols) +
+  scale_x_continuous(breaks = seq(26, 32, 2),
+                     expand = expansion(mult = c(0.01, 0.02))) +
+  scale_y_discrete(limits = rev(site_order_temp)) +
+  coord_cartesian(xlim = c(NA, 33.2), clip = "off") +
+  labs(tag = "C",
+       title = "Daily maximum temperature distribution",
+       x = "Daily maximum temperature (°C)", y = NULL) +
+  theme_bw(base_size = 10) +
+  theme(
+    legend.position     = "none",
+    panel.grid.major.y  = element_blank(),
+    panel.grid.minor    = element_blank(),
+    axis.text.y         = element_blank(),
+    axis.ticks.y        = element_blank(),
+    axis.text.x         = element_text(size = 8),
+    plot.title          = element_text(size = 9, face = "bold"),
+    plot.tag            = element_text(face = "bold", size = 12),
+    plot.margin         = margin(4, 28, 4, 4)
+  )
+
+# Combine panels
+temp_range <- (pA | pB | pC) +
+  plot_layout(widths = c(1.8, 1, 1)) &
+  theme(plot.background = element_rect(fill = "white", color = NA))
+
+temp_range
+
+ggsave(
+  filename = "../Output/temp_range_plot.png",
+  plot     = temp_range,
+  device   = "png",
+  width    = 15,
+  height   = 7.5,
+  units    = "in",
+  dpi      = 300,
+  bg       = "white"
+)
+
+```
+
+**Figure X.** Daily lagoon water temperature at 11 *Pocillopora* survey sites around Moorea, French Polynesia, August 2021 – August 2025. Temperature records were obtained from the Moorea Coral Reef LTER island-wide lagoon SBE56 logger array (MCR LTER dataset knb-lter-mcr.1045.6) and assigned to each survey site by nearest-neighbor matching on Haversine distance (range: 46–598 m). Sites are ordered geographically and colour-coded by shore: North (blue), East (green), West (mauve). **(A)** Weekly mean temperature (line) bounded by the weekly-averaged daily minimum–maximum envelope (shading). Blank intervals indicate periods with no logger data (S2: \~4 months in 2024; S5: \~9 months, late 2023–mid-2024; S6: \~6 weeks in 2024; S9: 12 months, 2022–2023). **(B)** Distribution of daily temperature range (T~max~ − T~min~) across all available days at each site. Mean daily range (annotated) spans 0.57°C at S9 (East shore) to 1.38°C at S18 (West shore). **(C)** Distribution of daily maximum temperature (T~max~) across all available days at each site. Mean daily maximum temperature (annotated) spans 28.22°C at S9 (East shore) to 28.70°C at S18 (West shore). In **(B)** and **(C)**, violins show the kernel density estimate (scaled to equal width); boxes show the interquartile range and median; diamonds denote the site mean.
+
+# 3. LTER Wave data
+
+## Maximum wave power
+
+Hypothesis: Sites experiencing higher maximum wave power will support lower densities of mechanically vulnerable Pocillopora species because extreme hydrodynamic forces increase colony breakage and dislodgement. This effect is expected to be strongest for P. acuta and P. effusa, which possess relatively low skeletal densities.
+
+3.  Wave forcing: fore-reef energy, 3-shore resolution Wave Forcing 3.1 wave download function
+
+```{r}
+options(HTTPUserAgent = "EDI_CodeGen")
+
+read_mcr_wave <- function(url, local_path) {
+  path <- get_edi_file(url, local_path)
+
+  # Read the data: skip the first line (metadata), use the second as header
+  dat <- read.csv(
+    path,
+    header = TRUE,
+    skip   = 0,
+    sep    = ",",
+    quote  = '"',
+    check.names = TRUE,
+    stringsAsFactors = FALSE
+  )
+
+  # If the file uses time_local / time_utc columns, parse them
+  if ("time_local" %in% names(dat)) {
+    suppressWarnings({
+      dat$time_local <- as.POSIXct(dat$time_local, tz = "Pacific/Midway") # adjust TZ if needed
+    })
+  }
+  if ("time_utc" %in% names(dat)) {
+    suppressWarnings({
+      dat$time_utc <- as.POSIXct(dat$time_utc, tz = "UTC")
+    })
+  }
+
+  dat
+}
+
+
+```
+
+3.2 Download wave data
+
+```{r}
+# Package ID: knb-lter-mcr.30.44 Cataloging System:https://pasta.edirepository.org.
+# Data set title: MCR LTER: Coral Reef: Ocean Currents and Biogeochemistry: salinity, temperature and current at CTD and ADCP mooring FOR01 from 2004 ongoing.
+# Data set creator:    - Moorea Coral Reef LTER 
+# Data set creator:  Libe Washburn - Moorea Coral Reef LTER 
+# Metadata Provider:    - Moorea Coral Reef LTER 
+# Contact:    - Information Manager Moorea Coral Reef LTER  - mcrlter@msi.ucsb.edu
+wave_lter1 <- read_mcr_wave(
+  "https://pasta.lternet.edu/package/data/eml/knb-lter-mcr/30/44/e29d12699f7556d886c3b3c275370b42",
+  file.path(edi_cache, "mcr_wave_lter1.csv"))
+
+# Package ID: knb-lter-mcr.31.45 Cataloging System:https://pasta.edirepository.org.
+# Data set title: MCR LTER: Coral Reef: Ocean Currents and Biogeochemistry: salinity, temperature and current at CTD and ADCP mooring FOR04 from 2004 ongoing.
+# Data set creator:    - Moorea Coral Reef LTER 
+# Data set creator:  Libe Washburn - Moorea Coral Reef LTER 
+# Metadata Provider:    - Moorea Coral Reef LTER 
+# Contact:    - Information Manager Moorea Coral Reef LTER  - mcrlter@msi.ucsb.edu
+wave_lter4 <- read_mcr_wave(
+  "https://pasta.lternet.edu/package/data/eml/knb-lter-mcr/31/45/e29d12699f7556d886c3b3c275370b42",
+  file.path(edi_cache, "mcr_wave_lter4.csv"))
+
+# Package ID: knb-lter-mcr.32.41 Cataloging System:https://pasta.edirepository.org.
+# Data set title: MCR LTER: Coral Reef: Ocean Currents and Biogeochemistry: salinity, temperature and current at CTD and ADCP mooring FOR05 from 2005 ongoing.
+# Data set creator:    - Moorea Coral Reef LTER 
+# Data set creator:  Libe Washburn - Moorea Coral Reef LTER 
+# Metadata Provider:    - Moorea Coral Reef LTER 
+# Contact:    - Information Manager Moorea Coral Reef LTER  - mcrlter@msi.ucsb.edu
+wave_lter5 <- read_mcr_wave(
+  "https://pasta.lternet.edu/package/data/eml/knb-lter-mcr/32/41/e29d12699f7556d886c3b3c275370b42",
+  file.path(edi_cache, "mcr_wave_lter5.csv"))
+
+
+wave_lter1 <- wave_lter1 %>%
+  mutate(
+    # Replace -999 with NA for the key wave variables
+    wave_ht_adcp_m = na_if(wave_ht_adcp_m, -999),
+    wave_period_adcp_sec = na_if(wave_period_adcp_sec, -999),
+    wave_power_adcp = na_if(wave_power_adcp, -999)
+  )
+
+str(wave_lter1)
+names(wave_lter1)
+head(wave_lter1)
+
+wave_lter4 <- wave_lter4 %>%
+  mutate(
+    # Replace -999 with NA for the key wave variables
+    wave_ht_adcp_m = na_if(wave_ht_adcp_m, -999),
+    wave_period_adcp_sec = na_if(wave_period_adcp_sec, -999),
+    wave_power_adcp = na_if(wave_power_adcp, -999)
+  )
+
+str(wave_lter4)
+names(wave_lter4)
+head(wave_lter4)
+
+wave_lter5 <- wave_lter5 %>%
+  mutate(
+    # Replace -999 with NA for the key wave variables
+    wave_ht_adcp_m = na_if(wave_ht_adcp_m, -999),
+    wave_period_adcp_sec = na_if(wave_period_adcp_sec, -999),
+    wave_power_adcp = na_if(wave_power_adcp, -999)
+  )
+
+str(wave_lter5)
+names(wave_lter5)
+head(wave_lter5)
+
+#filter to dates after > 2017
+wave_lter1 <- wave_lter1 %>%
+  filter(time_local > as.Date("2016-12-31"))
+wave_lter4 <- wave_lter4 %>%
+  filter(time_local > as.Date("2016-12-31"))
+wave_lter5 <- wave_lter5 %>%
+  filter(time_local > as.Date("2016-12-31"))
+
+```
+
+3.3 Function for Calculating Wave Power
+
+```{r}
+#Calculate P = wave energy flux (kW m–1)
+#From Dean & Dalrymple (1991)
+#P = wave energy flux (W m⁻¹)
+#ρ=1028 kg m⁻³ (seawater density)
+#g=9.8 m s⁻²
+#Hsig = significant wave height (m)
+#T = dominant wave period (s)
+
+rho <- 1028     # seawater density
+g <- 9.8        # gravity
+
+
+process_wave_site <- function(dat, shore_label, start_date = "2017-01-01") {
+
+  dat_clean <- dat %>%
+    mutate(
+      wave_ht_adcp_m       = na_if(wave_ht_adcp_m, -999),
+      wave_period_adcp_sec = na_if(wave_period_adcp_sec, -999),
+      wave_power_adcp      = na_if(wave_power_adcp, -999),
+      Hsig = wave_ht_adcp_m,
+      T    = wave_period_adcp_sec,
+      P_wm  = (rho * g^2 * Hsig^2 * T) / (64 * pi),
+      P_kwm = P_wm / 1000
+    )
+
+  daily <- dat_clean %>%
+    mutate(date = as.Date(time_local)) %>%
+    group_by(date) %>%
+    summarise(
+      wave_power_adcp   = mean(wave_power_adcp,   na.rm = TRUE),
+      wave_ht_adcp_m    = mean(wave_ht_adcp_m,    na.rm = TRUE),
+      wave_period_adcp  = mean(wave_period_adcp_sec, na.rm = TRUE),
+      P_kwm             = mean(P_kwm, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  clim <- daily %>%
+    filter(date >= as.Date(start_date)) %>%
+    summarise(
+      P_mean = mean(P_kwm, na.rm = TRUE),
+      P_p95  = quantile(P_kwm, 0.95, na.rm = TRUE),
+      P_max  = max(P_kwm, na.rm = TRUE),
+      P_sd   = sd(P_kwm, na.rm = TRUE)
+    ) %>%
+    mutate(shore = shore_label)
+
+  list(daily = daily, clim = clim)
+}
+
+```
+
+3.4 Calculate Wave Power
+
+```{r}
+
+#LTER_1
+res_lter1 <- process_wave_site(wave_lter1, shore_label = "North")
+wave_lter1_daily <- res_lter1$daily
+wave_lter1_clim  <- res_lter1$clim
+
+#LTER_4
+res_lter4 <- process_wave_site(wave_lter4, shore_label = "East")
+wave_lter4_daily <- res_lter4$daily
+wave_lter4_clim  <- res_lter4$clim
+
+#LTER_5
+res_lter5 <- process_wave_site(wave_lter5, shore_label = "West")
+wave_lter5_daily <- res_lter5$daily
+wave_lter5_clim  <- res_lter5$clim
+
+
+
+```
+
+3.5 Plot wave power by shore
+
+```{r}
+library(patchwork)
+
+wave_daily_all <- bind_rows(
+  wave_lter1_daily %>% mutate(site = "North (LTER_1)"),
+  wave_lter4_daily %>% mutate(site = "East (LTER_4)"),
+  wave_lter5_daily %>% mutate(site = "West (LTER_5)")
+)
+
+shore_cols  <- c(North = "#4BACC6", East = "#70AD47", West = "#C55A94")
+shore_order <- c("North", "East", "West")
+
+# Complete the daily sequence per shore so data gaps become explicit NAs
+# (geom_area breaks at NA rather than interpolating across missing periods)
+wave_daily_complete <- wave_daily_all |>
+  mutate(
+    shore = case_when(
+      site == "North (LTER_1)" ~ "North",
+      site == "East (LTER_4)"  ~ "East",
+      site == "West (LTER_5)"  ~ "West"
+    ),
+    shore = factor(shore, levels = shore_order)
+  ) |>
+  group_by(shore) |>
+  complete(date = seq(min(date), max(date), by = "day")) |>
+  ungroup()
+
+# Long-term summary stats for reference lines
+wave_stats <- wave_daily_complete |>
+  filter(!is.na(P_kwm)) |>
+  group_by(shore) |>
+  summarise(
+    mean_p = mean(P_kwm),
+    p95    = quantile(P_kwm, 0.95),
+    .groups = "drop"
+  )
+
+# Annual maxima per shore (complete years only; partial 2025 excluded)
+annual_max <- wave_daily_complete |>
+  filter(!is.na(P_kwm)) |>
+  mutate(year = lubridate::year(date)) |>
+  filter(year <= 2024) |>
+  group_by(shore, year) |>
+  summarise(annual_max = max(P_kwm), .groups = "drop")
+
+# Assign segment IDs so geom_area draws separate polygons with genuine blank gaps
+# (geom_area connects all points in a group into one polygon; separate groups = separate polygons)
+wave_segmented <- wave_daily_complete |>
+  filter(!is.na(P_kwm)) |>
+  arrange(shore, date) |>
+  group_by(shore) |>
+  mutate(
+    days_gap   = as.numeric(date - lag(date, default = first(date))),
+    segment_id = paste0(shore, "_", cumsum(days_gap > 1))
+  ) |>
+  ungroup()
+
+# --- Panel A: Daily wave power as filled area, gap-aware via segment groups ---
+pA_wave <- ggplot(wave_segmented,
+                  aes(x = date, y = P_kwm,
+                      fill = shore, group = segment_id)) +
+  geom_area(alpha = 0.7) +
+  geom_hline(data = wave_stats,
+             aes(yintercept = mean_p, color = shore),
+             linetype = "dashed", linewidth = 0.4, alpha = 0.9) +
+  geom_hline(data = wave_stats,
+             aes(yintercept = p95, color = shore),
+             linetype = "dotted", linewidth = 0.5, alpha = 0.9) +
+  facet_wrap(~ shore, ncol = 1, scales = "free_y") +
+  scale_fill_manual(values  = shore_cols) +
+  scale_color_manual(values = shore_cols) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y",
+               expand = expansion(mult = 0.01)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  annotate("text", x = as.Date("2017-02-01"), y = Inf,
+           label = "– – mean    ··· P95",
+           vjust = 1.4, size = 2.4, color = "gray40", hjust = 0) +
+  labs(tag   = "A",
+       title = "Daily wave power at fore-reef ADCP stations",
+       x     = NULL,
+       y     = expression("Wave power (kW m"^{-1}*")")) +
+  theme_bw(base_size = 10) +
+  theme(
+    legend.position    = "none",
+    strip.background   = element_rect(fill = "gray90", color = "gray40"),
+    strip.text         = element_text(face = "bold", size = 9),
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.spacing      = unit(0.3, "cm"),
+    axis.text.x        = element_text(size = 8),
+    axis.text.y        = element_text(size = 8),
+    plot.title         = element_text(size = 9, face = "bold"),
+    plot.tag           = element_text(face = "bold", size = 12),
+    plot.margin        = margin(4, 6, 4, 4)
+  )
+
+
+# --- Panel B: Full distribution violin + annual maxima as individual points ---
+pB_wave <- ggplot(wave_daily_complete |> filter(!is.na(P_kwm)),
+                  aes(x = shore, y = P_kwm, fill = shore)) +
+  geom_violin(trim = TRUE, alpha = 0.55, linewidth = 0.3,
+              color = "gray30", scale = "width") +
+  geom_boxplot(width = 0.12, outlier.shape = NA,
+               color = "gray20", fill = "white", linewidth = 0.4) +
+  geom_jitter(data = annual_max,
+              aes(x = shore, y = annual_max, fill = shore),
+              shape = 21, size = 2.5, color = "gray20", stroke = 0.5,
+              width = 0.08, height = 0) +
+  geom_point(data = wave_stats, aes(x = shore, y = mean_p),
+             shape = 23, size = 3, fill = "white",
+             color = "gray20", stroke = 0.7) +
+  geom_segment(data = wave_stats,
+               aes(x = as.numeric(shore) - 0.15,
+                   xend = as.numeric(shore) + 0.15,
+                   y = p95, yend = p95),
+               color = "gray20", linewidth = 0.6) +
+  geom_text(data = wave_stats,
+            aes(x = shore, y = mean_p,
+                label = paste0(round(mean_p, 1), " kW m⁻¹")),
+            nudge_x = 0.28, hjust = 0, size = 2.6, color = "gray25") +
+  geom_text(data = wave_stats,
+            aes(x = shore, y = p95,
+                label = paste0("P95: ", round(p95, 1))),
+            nudge_x = 0.28, hjust = 0, vjust = -0.4,
+            size = 2.4, color = "gray40") +
+  scale_fill_manual(values = shore_cols) +
+  scale_x_discrete(limits = shore_order) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.05))) +
+  coord_cartesian(xlim = c(0.5, 3.85), clip = "off") +
+  labs(tag     = "B",
+       title   = "Wave power distribution\n& annual maxima",
+       x       = "Shore",
+       y       = expression("Wave power (kW m"^{-1}*")"),
+       caption = "Filled circles: annual maximum wave power (2017–2024).\nDiamond: long-term mean. Tick: 95th percentile.") +
+  theme_bw(base_size = 10) +
+  theme(
+    legend.position    = "none",
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    axis.text.x        = element_text(size = 9, face = "bold"),
+    axis.text.y        = element_text(size = 8),
+    plot.title         = element_text(size = 9, face = "bold"),
+    plot.tag           = element_text(face = "bold", size = 12),
+    plot.caption       = element_text(size = 7, color = "gray45", hjust = 0),
+    plot.margin        = margin(4, 38, 4, 4)
+  )
+
+# Combine
+wave_power_fig <- (pA_wave | pB_wave) +
+  plot_layout(widths = c(2.2, 1)) &
+  theme(plot.background = element_rect(fill = "white", color = NA))
+
+wave_power_fig
+
+ggsave(
+  filename = "../Output/wave_power_plot.png",
+  plot     = wave_power_fig,
+  device   = "png",
+  width    = 11,
+  height   = 6,
+  units    = "in",
+  dpi      = 300,
+  bg       = "white"
+)
+```
+
+**Methods note — wave power assignment**
+
+Wave energy flux data were obtained from three Moorea Coral Reef LTER fore-reef ADCP stations (LTER 1: North shore; LTER 4: East shore; LTER 5: West shore; MCR LTER dataset knb-lter-mcr.6046). Because only one buoy exists per shore, all survey sites on a given shore were assigned the same wave record; there is no site-level wave data. Distances from each survey site to its assigned buoy (Haversine great-circle distance) ranged from 82 m (S18 to LTER 5) to 13.9 km (S12 to LTER 5), with the largest within-shore separations on the West shore (82–13,877 m) and the smallest on the North shore (258–7,645 m). Wave power (kW m⁻¹) was derived from ADCP-measured significant wave height (*H*) and peak period (*T*) following linear wave theory. Records span January 2017 – January 2025 for North and East shores, and January 2017 – July 2024 for the West shore, with data gaps of 285, 218, and 784 days respectively.
+
+**Figure X.** Daily wave energy flux at three fore-reef ADCP stations around Moorea, French Polynesia, January 2017 – January 2025, representing conditions on the North (LTER 1), East (LTER 4), and West (LTER 5) shores (MCR LTER dataset knb-lter-mcr.6046). Because wave data are available at the shore level only, all *Pocillopora* survey sites on a given shore were assigned the corresponding buoy record (see Methods). **(A)** Daily wave energy flux shown as a filled area; individual storm events are preserved as spikes. Dashed and dotted horizontal lines indicate the long-term mean and 95th percentile, respectively. Blank intervals indicate periods with no instrument data (North: \~285 missing days; East: \~218 missing days; West: \~784 missing days including a major gap spanning late 2019 to early 2021). **(B)** Full distribution of daily wave power values at each shore. Violins show the kernel density estimate (scaled to equal width); boxes show the interquartile range and median; filled circles show annual maximum wave power for each complete year (2017–2024); diamonds denote the long-term mean; horizontal ticks mark the 95th percentile. Mean wave power increases from the North shore (4.8 kW m⁻¹) to the East shore (9.2 kW m⁻¹) to the West shore (13.1 kW m⁻¹), with the West shore also exhibiting the greatest annual maximum wave power (up to 189 kW m⁻¹ in 2022). 3.6 Build the shore-level wave table
+
+```{r}
+
+wave_shore <- bind_rows(
+  wave_lter1_clim,
+  wave_lter4_clim,
+  wave_lter5_clim
+) %>%
+  select(shore, P_mean, P_p95, P_max, P_sd)
+
+wave_shore
+
+sites_wave <- sites %>%
+  left_join(wave_shore, by = "shore")
+
+str(sites_wave)
+
+```
+
+5.  Benthic cover: backreef photoquadrats
+
+## Hard coral cover
+
+Hypothesis: Sites with greater hard coral cover will support higher densities of Pocillopora colonies, particularly juvenile size classes, because larger adult coral populations increase reproductive output and larval supply, enhancing local recruitment.
+
+## CTB (rubble, crustose coralline algae, and turf substrate)
+
+Hypothesis: Sites with greater CTB cover will support higher densities of Pocillopora colonies because these substrates provide suitable settlement surfaces for coral larvae and facilitate post-settlement survival and growth.
+
+## Macroalgae
+
+Hypothesis: Sites with greater Macroalgae cover provide an additional hard substrates byt can impeede coral larvae and compete with larvae and adult corals causing post-settlement mortality.
+
+## Sand cover
+
+Hypothesis: Sites with greater sand cover will support lower densities of Pocillopora colonies because unconsolidated sediments reduce suitable settlement habitat and can cause abrasion, burial, and scouring. Negative effects are expected to be strongest for the smallest size classes due to their greater susceptibility to physical disturbance.
+
+image analysis of 100 points for a maximum of 26 quadrats on 3 transects for each of the sites was completed in CoralNet
+
+5.1 Importing data from benthic cover (site characterization)
+
+```{r}
+benthic_data <- read.csv("../Data/data_benthic_clean.csv") %>%
+  select(-X) %>%
+  rename(site.name = Site)
+
+
+site_order <- c(
+  "S2","S3","S4","S5",
+  "S6","S9","S11",
+  "S12","S14","S15","S18"
+)
+
+shore_order <- c(
+  "North",
+  "East",
+  "West"
+)
+
+benthic_data <- benthic_data %>%
+  mutate(
+    site.name = factor(
+      site.name,
+      levels = site_order
+    ),
+    Shore = factor(
+      Shore,
+      levels = shore_order
+    )
+  )
+
+benthic_cols <- c(
+  # Non-coral / abiotic — neutral/earthy tones
+  "Macroalgae"                             = "#3D5A1E",  # dark forest green
+  "Rubble, Crustose Coralline Algae, Turf" = "#8B6914",  # warm tan-brown
+  "Sand"                                   = "#F4E285",  # pale straw yellow
+  "Unknown"                                = "#7F7F7F",  # neutral gray
+  "Giant clam"                             = "#2B2D42",  # near-black blue
+  "Millepora"                              = "#D4AC0D",  # dark gold
+  # Hard corals
+  "Pocillopora"                            = "#1A237E",  # very deep navy
+  "Porites"                                = "#4527A0",  # deep indigo
+  "Montipora"                              = "#6A1B4D",  # dark maroon-plum
+  "Acropora"                               = "#BFEF45",  # bright lime
+  "Gardineroseris"                         = "#FBE426",  # bright yellow
+  "Leptoseris"                             = "#AA0DFE",  # vivid violet
+  "Psammocora"                             = "#795548",  # warm brown
+  "Pavona"                                 = "#880E4F",  # dark cherry
+  "Unidentified coral"                     = "#546E7A",  # blue-gray slate
+  "Acanthastrea"                           = "#00695C",  # dark teal
+  "Sandalolitha"                           = "#FE00FA",  # vivid magenta
+  "Leptastrea"                             = "#DDA0DD",  # plum/lavender
+  "Montastraea"                            = "#1565C0",  # bright cobalt
+  "Lobophyllia"                            = "#8B0000",  # dark red/maroon
+  "Cyphastrea"                             = "#F48FB1",  # light pink
+  "Fungia"                                 = "#1B5E20",  # very dark forest green
+  "Tubastraea"                             = "#6A0DAD",  # medium purple
+  "Astreopora"                             = "#3B00FB",  # vivid blue-violet
+  "Pachyseris"                             = "#8D6E63"   # rosy brown
+)
+
+benthic_site_plot <- ggplot(
+  benthic_data,
+  aes(
+    x = site.name,
+    y = RelAbundance,
+    fill = Benthic.Name
+  )
+) +
+  geom_col(width = 0.7) +
+  facet_grid(~ Shore, scales = "free_x", space = "free_x") +
+  coord_cartesian(ylim = c(0, 1.04), clip = "off") +
+  scale_fill_manual(values = benthic_cols) +
+  scale_y_continuous(
+    breaks = seq(0, 1, by = 0.25),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(
+    x = "Site",
+    y = "Percent Cover",
+    fill = NULL
+  ) +
+  theme_bw() +
+  theme(
+    strip.background = element_rect(fill = "gray", color = "black"),
+    strip.text = element_text(color = "black", face = "bold"),
+    legend.text.align = 0,
+    legend.position = "right",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 6),
+    legend.key.height = unit(0.3, "cm")
+  )
+benthic_site_plot
+
+sites_benthic <-  benthic_data %>%
+  select(
+    Shore,
+    site.name,
+    Benthic.Name,
+    RelAbundance
+  ) %>%
+  pivot_wider(
+    names_from = Benthic.Name,
+    values_from = RelAbundance,
+    values_fill = 0
+  ) %>%
+  arrange(site.name)
+
+hard_coral_cols <- c(
+  "Acanthastrea",
+  "Acropora",
+  "Astreopora",
+  "Cyphastrea",
+  "Fungia",
+  "Gardineroseris",
+  "Leptastrea",
+  "Leptoseris",
+  "Lobophyllia",
+  "Montastraea",
+  "Montipora",
+  "Pachyseris",
+  "Pavona",
+  "Pocillopora",
+  "Porites",
+  "Psammocora",
+  "Tubastraea",
+  "Sandalolitha",
+  "Unidentified coral"
+)
+
+sites_benthic <- sites_benthic %>%
+  mutate(
+    Hard_Coral = rowSums(
+      across(any_of(hard_coral_cols)),
+      na.rm = TRUE
+    )
+  ) %>%
+  rename(
+    CTB = `Rubble, Crustose Coralline Algae, Turf`
+  )
+
+```
+
+6.  Nutrients: Turbinaria N high-resolution, lagoon-wide 6.1 clean import + mapping of high-res Turbinaria CHN
+
+```{r}
+# Package ID: knb-lter-mcr.1047.1 Cataloging System:https://pasta.edirepository.org.
+# Data set title: MCR LTER: Coral Reef: Turbinaria CHN from a spatially explicit sampling campaign in lagoons of Moorea, French Polynesia.
+# Data set creator:    - Moorea Coral Reef LTER 
+# Data set creator:  Thomas Adam - Moorea Coral Reef LTER 
+# Data set creator:  Christian John - University of California, Santa Barbara 
+# Data set creator:  Deron Burkepile - Moorea Coral Reef LTER 
+# Metadata Provider:    - Moorea Coral Reef LTER 
+# Contact:    - Information Manager Moorea Coral Reef LTER  - mcrlter@msi.ucsb.edu
+
+options(HTTPUserAgent = "EDI_CodeGen")
+
+## --------------------------------------------------
+## TABLE 1: Site metadata (coords, habitat, distance)
+## --------------------------------------------------
+url_sites <- "https://pasta.lternet.edu/package/data/eml/knb-lter-mcr/1047/1/45ed57442847daf0fb6a7dbccac56b53"
+tmp_sites <- get_edi_file(url_sites, file.path(edi_cache, "mcr_turbinaria_sites.csv"))
+
+turbinaria_sites <- read.csv(
+  tmp_sites,
+  header   = FALSE,
+  skip     = 1,
+  sep      = ",",
+  quote    = '"',
+  col.names = c(
+    "Site",
+    "Longitude",
+    "Latitude",
+    "Habitat",
+    "Island_shore",
+    "Distance_from_shore",
+    "Distance_from_crest",
+    "Watershed_area",
+    "Cleared_area"
+  ),
+  check.names = TRUE,
+  stringsAsFactors = FALSE
+)
+
+
+
+turbinaria_sites <- turbinaria_sites %>%
+  mutate(
+    Site                = factor(Site),
+    Habitat             = factor(Habitat),
+    Island_shore        = factor(Island_shore),
+    Longitude           = as.numeric(Longitude),
+    Latitude            = as.numeric(Latitude),
+    Distance_from_shore = as.numeric(Distance_from_shore),
+    Distance_from_crest = as.numeric(Distance_from_crest),
+    Watershed_area      = as.numeric(Watershed_area),
+    Cleared_area        = as.numeric(Cleared_area)
+  )
+
+str(turbinaria_sites)
+
+## --------------------------------------------------
+## TABLE 2: Full CHN measurements (Percent_N, C:N)
+## --------------------------------------------------
+url_chn <- "https://pasta.lternet.edu/package/data/eml/knb-lter-mcr/1047/1/098ecd51f703743ef38e4db4967778cb"
+tmp_chn <- get_edi_file(url_chn, file.path(edi_cache, "mcr_turbinaria_chn.csv"))
+
+turbinaria_chn <- read.csv(
+  tmp_chn,
+  header   = FALSE,
+  skip     = 1,
+  sep      = ",",
+  quote    = '"',
+  col.names = c(
+    "Site",
+    "FieldSeason",
+    "Date",
+    "Year",
+    "Month",
+    "Day",
+    "Weight_ug",
+    "Percent_C",
+    "Percent_H",
+    "Percent_N",
+    "C_to_N_ratio"
+  ),
+  check.names = TRUE,
+  stringsAsFactors = FALSE
+)
+
+
+
+turbinaria_chn <- turbinaria_chn %>%
+  mutate(
+    Site        = factor(Site),
+    FieldSeason = factor(FieldSeason),
+    Date        = as.Date(Date, format = "%Y-%m-%d"),
+    Year        = as.integer(Year),
+    Month       = as.numeric(Month),
+    Day         = as.numeric(Day),
+    Weight_ug   = as.numeric(Weight_ug),
+    Percent_C   = as.numeric(Percent_C),
+    Percent_H   = as.numeric(Percent_H),
+    Percent_N   = as.numeric(Percent_N),
+    C_to_N_ratio = as.numeric(C_to_N_ratio)
+  )
+
+str(turbinaria_chn)
+
+
+turbinaria_chn <- turbinaria_chn %>%
+  filter(Year > 2016)
+
+```
+
+7.2 Summarize data and map onto the coral density site
+
+```{r}
+## --------------------------------------------------
+## 1. Summarise Turbinaria %N by Turbinaria Site
+## --------------------------------------------------
+
+turb_N_site <- turbinaria_chn %>%
+  group_by(Site) %>%
+  summarise(
+    turb_N_mean_pct = mean(Percent_N, na.rm = TRUE),
+    turb_N_sd_pct   = sd(Percent_N,   na.rm = TRUE),
+    turb_N_n_samples = sum(!is.na(Percent_N)),
+    Year_min        = min(Year, na.rm = TRUE),
+    Year_max        = max(Year, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  # add coordinates + basic metadata
+  left_join(
+    turbinaria_sites %>%
+      select(
+        Site,
+        turb_long         = Longitude,
+        turb_lat          = Latitude,
+        turb_Habitat      = Habitat,
+        turb_Island_shore = Island_shore
+      ),
+    by = "Site"
+  ) %>%
+  # keep only sites with coordinates and N
+  filter(!is.na(turb_long), !is.na(turb_lat), !is.na(turb_N_mean_pct))
+
+## --------------------------------------------------
+## 2. Coral sites from sites_wave
+## --------------------------------------------------
+
+coral_sites <- sites_wave %>%
+  select(site.name, long, lat, shore) %>%
+  distinct() %>%
+  filter(!is.na(long), !is.na(lat), site.name != "S1")
+
+## --------------------------------------------------
+## 3. Haversine distance matrix (coral × Turbinaria)
+## --------------------------------------------------
+
+# Matrices of lon/lat (in degrees) for geosphere
+coral_coords <- as.matrix(coral_sites[, c("long", "lat")])
+turb_coords  <- as.matrix(turb_N_site[, c("turb_long", "turb_lat")])
+
+# distHaversine can take vectors or matrices; use outer-style apply
+# Build an n_coral × n_turb matrix of distances (m)
+dist_mat <- sapply(
+  1:nrow(turb_coords),
+  function(j) distHaversine(coral_coords, turb_coords[j, ])
+)
+
+# dist_mat[i, j] = distance from coral_sites[i, ] to turb_N_site[j, ]
+
+## --------------------------------------------------
+## 4. For each coral site, find nearest Turbinaria site
+## --------------------------------------------------
+
+# index of nearest Turbinaria site per coral site
+nn_index <- max.col(-dist_mat)  # argmin via argmax of negative
+
+# minimum distance in meters
+dist_min_m <- dist_mat[cbind(seq_len(nrow(coral_sites)), nn_index)]
+
+## --------------------------------------------------
+## 5. Build coral_turb lookup table
+## --------------------------------------------------
+
+coral_turb <- coral_sites %>%
+  bind_cols(
+    turb_N_site[nn_index, c("Site",
+                            "turb_N_mean_pct",
+                            "turb_N_sd_pct",
+                            "turb_N_n_samples")] %>%
+      rename(
+        turb_site = Site
+      )
+  ) %>%
+  mutate(
+    dist_to_turb_m = dist_min_m
+  )
+
+# Inspect result
+str(coral_turb)
+head(coral_turb)
+
+coral_turb$site.name <- factor(
+  coral_turb$site.name,
+  levels = c("S2", "S3", "S4", "S5", "S6", "S9", "S11", "S12", "S14", "S15", "S18" )
+)
+
+
+#  barplot: mean ± SD by site
+nut_turb <- ggplot(coral_turb, aes(x = site.name, y = turb_N_mean_pct)) +
+  geom_col(fill = "grey70", width = 0.6) +
+  geom_errorbar(
+    aes(ymin = turb_N_mean_pct - turb_N_sd_pct,
+        ymax = turb_N_mean_pct + turb_N_sd_pct),
+    width = 0.2
+  ) +
+  labs(
+    #title = "Turbinaria tissue %N by coral survey site",
+    x = "Site",
+    y = "Turbinaria %N (mean ± SD)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+nut_turb 
+
+ggsave(
+  filename = "../Output/nutrients_turbinaria_plot.png",
+  plot = nut_turb ,
+  device = "png",
+  width = 8,     # adjust width in inches
+  height = 4,     # adjust height in inches
+  units = "in")
+
+
+```
+
+10.1 Join the environmental dataset
+
+```{r}
+#Start from temperature table (has long, lat, shore, temp metrics)
+sites_env_full <- sites_temp %>%
+  select(
+        site.name, shore,
+        max_temp_br, daily_range_br
+      ) %>%
+  
+  # ---- Add waves ----
+  left_join(
+    sites_wave %>%
+      select(
+        site.name,
+        wave_P_max = P_max
+      ),
+    by = "site.name"
+  ) %>%
+  
+  # ---- Add benthic cover (backreef) ----
+  left_join(
+    sites_benthic %>%
+      select(
+        site.name,CTB,
+        Macroalgae, Hard_Coral),
+    by = "site.name"
+  ) %>%
+  
+  # ---- Add high spatial resolution nutrients (Turbinaria CHN) ----
+  left_join(
+    coral_turb %>%
+      select(
+        site.name,
+        turb_N_mean_pct,
+      ),
+    by = "site.name"
+  )
+
+
+# Have a look
+glimpse(sites_env_full)
+str(sites_env_full)
+
+
+sites_env_hyp <- sites_env_full %>%
+  filter(!site.name=="S1")
+
+write.csv(sites_env_hyp, "../Data/sites_env_hyp.csv")
+```

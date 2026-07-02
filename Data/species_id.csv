@@ -9,7 +9,7 @@ HP_240619A,HP-101,E6,Plate010,415,Haplotype 3,,P. verrucosa
 HP_240619A,HP-093,E5,Plate010,416,Haplotype 2,,P. effusa
 HP_240619A,HP-117,E8,Plate010,417,Haplotype 11,,P. effusa
 RAA_241029B,RA1874,F9,Plate031,418,Haplotype 1a,,P. meandrina
-HP_240619A,HP-077,E3,Plate010,419,Haplotype 11,,P. effusa
+HP_240619A,HP-077,E3,Plate010,41900,Haplotype 11,,P. effusa
 RAA_241029B,RA1851,G6,Plate031,419,Haplotype 11,,P. effusa
 HP_240619A,HP-069,E2,Plate010,420,Haplotype 11,,P. effusa
 HP_240619A,HP-061,E1,Plate010,421,Haplotype 10,,P. tuahiniensis
@@ -23,7 +23,6 @@ RAA_241029B,RA1859,G7,Plate031,427,Haplotype 1a,,P. meandrina
 RAA_241029B,RA1882,F10,Plate031,428,Haplotype 10,,P. tuahiniensis
 RAA_241029B,RA1900,H12,Plate031,429,Haplotype 11,,P. effusa
 HP_240619A,HP-076,D3,Plate010,430,Haplotype 11,,P. effusa
-RAA_241029C,RA1901,A1,Plate032,430,Haplotype 10,,P. tuahiniensis
 HP_240619A,HP-068,D2,Plate010,431,Haplotype 1a,,P. meandrina
 HP_240619A,HP-147,C12,Plate010,432,Haplotype 1a,,P. meandrina
 RAA_241029B,RA1890,F11,Plate031,432,NA,Fail,NA
@@ -168,7 +167,7 @@ HP_240619A,HP-126,F9,Plate010,617,Haplotype 3,,P. verrucosa
 RAA_241007B,RA0316,G4,Plate013,618,Haplotype 10,,P. tuahiniensis
 HP_240619A,HP-074,B3,Plate010,619,Haplotype 3,,P. verrucosa
 RAA_241007B,RA0308,G3,Plate013,620,Haplotype 2,,P. effusa
-RA_250305A,RA2918,A10,Plate005,620,Haplotype 1a,,P. meandrina
+RA_250305A,RA2918,A10,Plate005,62000,Haplotype 1a,,P. meandrina
 RA_250304A,RA2814,H8,Plate004,621,Haplotype 10,,P. tuahiniensis
 RA_250304A,RA2758,H1,Plate004,622,Haplotype 3,,P. verrucosa
 RA_250305A,RA2902,A8,Plate005,624,Haplotype 11,,P. effusa
@@ -308,7 +307,6 @@ RA_250306B,RA3089,G7,Plate007,767,Haplotype 11,,P. effusa
 RAA_241108A,RA2467,E12,Plate037,768,Haplotype 10,,P. tuahiniensis
 RAA_241108B,RA2511,B6,Plate038,779,Haplotype 8a,,P. meandrina
 RAA_241108A,RA2460,F11,Plate037,780,NA,Fail,NA
-RAA_241108A,RA2462,H11,Plate037,781,Haplotype 11,,P. effusa
 RAA_241108B,RA2542,A10,Plate038,781,Haplotype 1a,,P. meandrina
 RAA_241108A,RA2390,H2,Plate037,783,Haplotype 1a,,P. meandrina
 RAA_241108A,RA2459,E11,Plate037,784,Haplotype 2,,P. effusa
@@ -1072,7 +1070,6 @@ RA_250306B,RA3108,B10,Plate007,1644,Haplotype 1a,,P. meandrina
 RAA_241101A,RA2172,B11,Plate034,1645,Haplotype 1a,,P. meandrina
 RAA_241101A,RA2160,F9,Plate034,1646,Haplotype 8a,,P. meandrina
 RA_250306B,RA3056,F3,Plate007,1647,Haplotype 1a,,P. meandrina
-RA_250304A,RA2826,D10,Plate004,1648,Haplotype 1a,,P. grandis
 RA_250306B,RA3100,B9,Plate007,1648,Haplotype 1a,,P. meandrina
 RA_250306B,RA3116,B11,Plate007,1649,Haplotype 1a,,P. meandrina
 RAA_241101A,RA2094,D1,Plate034,1650,Haplotype 1a,,P. meandrina
@@ -1111,7 +1108,7 @@ RA_250304A,RA2785,C5,Plate004,1684,Haplotype 1a,,P. grandis
 RAA_241101A,RA2133,C6,Plate034,1685,Haplotype 1a,,P. meandrina
 RAA_241101A,RA2156,B9,Plate034,1686,Haplotype 1a,,P. meandrina
 RA_250304A,RA2783,A5,Plate004,1689,Haplotype 1a,,P. meandrina
-RAA_241101A,RA2105,G2,Plate034,1690,Haplotype 2,,P. effusa
+RAA_241101A,RA2105,G2,Plate034,16900,Haplotype 2,,P. effusa
 RA_250304A,RA2787,E5,Plate004,1690,Haplotype 11,,P. effusa
 RA_250304A,RA2832,B11,Plate004,1691,Haplotype 1a,,P. meandrina
 RAA_241101A,RA2124,B5,Plate034,1692,Haplotype 8a,,P. meandrina
@@ -1135,7 +1132,6 @@ RA_250304A,RA2789,G5,Plate004,1710,Haplotype 1a,,P. grandis
 RAA_241101A,RA2095,E1,Plate034,1711,Haplotype 1a,,P. meandrina
 RA_250304A,RA2767,A3,Plate004,1712,Haplotype 10,,P. tuahiniensis
 RA_250304A,RA2840,B12,Plate004,1713,Haplotype 11,,P. effusa
-RAA_241101A,RA2143,E7,Plate034,1714,Haplotype 11,,P. effusa
 RA_250304A,RA2808,B8,Plate004,1714,Haplotype 1a,,P. meandrina
 RA_250304A,RA2751,A1,Plate004,1715,Haplotype 1a,,P. meandrina
 RAA_241101A,RA2167,E10,Plate034,1716,Haplotype 1a,,P. meandrina
@@ -1282,8 +1278,6 @@ RAA_241031B,RA2024,E4,Plate033,1860,Haplotype 8a,,P. meandrina
 RAA_241029C,RA1956,H7,Plate032,1861,Haplotype 8a,,P. meandrina
 RAA_241029C,RA1915,G2,Plate032,1862,Haplotype 1a,,P. grandis
 RAA_241029C,RA1976,D10,Plate032,1863,Haplotype 1a,,P. meandrina
-RAA_241029C,RA1948,H6,Plate032,1864,Haplotype 1a,,P. meandrina
-RAA_241029C,RA1984,D11,Plate032,1864,Haplotype 1a,,P. grandis
 RAA_241029C,RA1979,G10,Plate032,1865,Haplotype 1a,,P. grandis
 RAA_241031B,RA2028,A5,Plate033,1866,Haplotype 2,,P. effusa
 RAA_241029C,RA1980,H10,Plate032,1868,Haplotype 5a,,P. acuta
@@ -1438,7 +1432,6 @@ RAA_241029C,RA1973,A10,Plate032,2024,Haplotype 1a,,P. meandrina
 RAA_241107B,RA2282,C1,Plate036,2025,Haplotype 11,,P. effusa
 RAA_241107B,RA2315,D5,Plate036,2026,Haplotype 1a,,P. meandrina
 RAA_241011B,RA0711,F6,Plate019,2027,Haplotype 10,,P. tuahiniensis
-RAA_241011B,RA0710,E6,Plate019,2029,Haplotype 10,,P. tuahiniensis
 RAA_241011B,RA0733,D9,Plate019,2029,Haplotype 1a,,P. meandrina
 RAA_241011B,RA0671,F1,Plate019,2030,Haplotype 1a,,P. meandrina
 RAA_241011B,RA0672,G1,Plate019,2032,Haplotype 1a,,P. meandrina
@@ -1496,7 +1489,6 @@ RAA_241029C,RA1950,B7,Plate032,2087,Haplotype 1a,,P. meandrina
 RAA_241029C,RA1911,C2,Plate032,2088,Haplotype 11,,P. effusa
 RAA_241029C,RA1982,B11,Plate032,2089,Haplotype 8a,,P. meandrina
 RAA_241011B,RA0695,F4,Plate019,2090,Haplotype 11,,P. effusa
-RAA_241107B,RA2348,E9,Plate036,2090,Haplotype 3,,P. verrucosa
 RAA_241107B,RA2368,A12,Plate036,2091,Haplotype 8a,,P. meandrina
 RAA_241107B,RA2324,E6,Plate036,2092,Haplotype 1a,,P. meandrina
 RAA_241101B,RA2240,G7,Plate035,2093,Haplotype 10,,P. tuahiniensis
@@ -2227,7 +2219,6 @@ RAA_241024B,RA1381,C7,Plate026,2851,Haplotype 1a,,P. meandrina
 RAA_241024B,RA1357,C4,Plate026,2852,Haplotype 8a,,P. meandrina
 RAA_241024B,RA1376,F6,Plate026,2853,Haplotype 1a,,P. meandrina
 RAA_241024B,RA1406,D10,Plate026,2854,Haplotype 1a,,P. meandrina
-RAA_241024B,RA1351,E3,Plate026,2855,NA,Fail,NA
 RAA_241028A,RA1617,B1,Plate029,2855,Haplotype 1a,,P. meandrina
 RAA_241024B,RA1350,D3,Plate026,2856,Haplotype 1a,,P. meandrina
 RAA_241024B,RA1360,F4,Plate026,2857,Haplotype 1a,,P. meandrina
@@ -2509,13 +2500,13 @@ RAA_241021B,RA0974,H3,Plate022,3220,Haplotype 11,,P. effusa
 RAA_241021C,RA1085,H5,Plate023,3221,Haplotype 1a,,P. meandrina
 RAA_241021B,RA0990,H5,Plate022,3222,Haplotype 10,,P. tuahiniensis
 RAA_241012B,RA0917,F8,Plate021,3223,NA,Fail,NA
-RAA_241012A,RA0792,H4,Plate020,3224,Haplotype 1a,,P. meandrina
+RAA_241012A,RA0792,H4,Plate020,32240,Haplotype 1a,,P. meandrina
 RAA_241012A,RA0797,E5,Plate020,3224,Haplotype 1a,,P. meandrina
-RAA_241021B,RA0976,B4,Plate022,3225,Haplotype 1a,,P. meandrina
+RAA_241021B,RA0976,B4,Plate022,32250,Haplotype 1a,,P. meandrina
 RAA_241021B,RA1031,A11,Plate022,3226,Haplotype 8a,,P. meandrina
 RAA_241021B,RA1042,D12,Plate022,3227,Haplotype 8a,,P. meandrina
 RAA_241021C,RA1132,G11,Plate023,3228,Haplotype 1a,,P. grandis
-RAA_241021B,RA0992,B6,Plate022,3229,Haplotype 8a,,P. meandrina
+RAA_241021B,RA0992,B6,Plate022,32290,Haplotype 8a,,P. meandrina
 RAA_241021C,RA1093,H6,Plate023,3230,Haplotype 1a,,P. meandrina
 RAA_241021B,RA0952,B1,Plate022,3231,Haplotype 1a,,P. meandrina
 RAA_241021B,RA1009,C8,Plate022,3232,Haplotype 1a,,P. meandrina
@@ -2637,8 +2628,7 @@ RAA_241012A,RA0842,B11,Plate020,3349,Haplotype 1a,,P. meandrina
 RAA_241012A,RA0852,E12,Plate020,3350,Haplotype 5a,,P. acuta
 RAA_241028B,RA1719,B2,Plate030,3351,Haplotype 8a,,P. meandrina
 RAA_241029B,RA1821,A3,Plate031,3352,Haplotype 3,,P. verrucosa
-HP_240619B,HP-205,G7,Plate011,3353,Haplotype 10,,P. tuahiniensis
-RAA_241021C,RA1121,D10,Plate023,3353,NA,Fail,NA
+RAA_241021C,RA1121,D10,Plate023,3353,Haplotype 10,,P. tuahiniensis
 RAA_241021C,RA1112,C9,Plate023,3354,Haplotype 1a,,P. meandrina
 RAA_241028B,RA1718,A2,Plate030,3355,Haplotype 3,,P. verrucosa
 RAA_241029B,RA1864,D8,Plate031,3356,Haplotype 1a,,P. meandrina
@@ -3097,7 +3087,7 @@ RAA_241009,RA0534,C8,Plate015,3830,Haplotype 1a,,P. meandrina
 RAA_241009,RA0530,G7,Plate015,3831,Haplotype 3,,P. verrucosa
 RAA_241009,RA0558,C11,Plate015,3832,Haplotype 3,,P. verrucosa
 RAA_241008B,RA0419,G5,Plate014,3833,Haplotype 1a,,P. meandrina
-RAA_241007B,RA0304,C3,Plate013,3834,Haplotype 1a,,P. meandrina
+RAA_241007B,RA0304,C3,Plate013,38340,Haplotype 1a,,P. meandrina
 RAA_241009,RA0478,C1,Plate015,3834,Haplotype 1a,,P. meandrina
 RAA_241009,RA0548,A10,Plate015,3835,Haplotype 1a,,P. meandrina
 RAA_241008B,RA0410,F4,Plate014,3836,Haplotype 1a,,P. meandrina
@@ -3210,7 +3200,6 @@ RAA_241007A,RA0277,G11,Plate012,3948,Haplotype 5a,,P. acuta
 RAA_241007A,RA0284,G12,Plate012,3949,Haplotype 1a,,P. grandis
 RAA_241007A,RA0198,H1,Plate012,3950,Haplotype 10,,P. tuahiniensis
 HP_240619B,HP-156,F1,Plate011,3650_BIS,Haplotype 10,,P. tuahiniensis
-HP_240619A,HP-084,D4,Plate010,430_BIS,Haplotype 10,,P. tuahiniensis
 HP_240619A,NA,H12,Plate010,NA,NA,,NA
 HP_240619B,NA,H12,Plate011,NA,NA,,NA
 RAA_241003A,EMPTY FOR JANET,G12,Plate016,NA,NA,NA,NA

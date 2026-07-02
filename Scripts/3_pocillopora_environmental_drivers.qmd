@@ -1,0 +1,1598 @@
+---
+title: "Population size structure, not species turnover, tracks environmental gradients across a diverse Indo-Pacific *Pocillopora* assembledge"
+subtitle: "Statistical analysis and visualization pipeline"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    embed-resources: true
+    fig-width: 10
+    fig-height: 7
+execute:
+  warning: false
+  message: false
+---
+
+# Setup
+
+## Load packages
+
+```{r}
+#| label: load-packages
+library(tidyverse)
+library(vegan)
+library(ordinal)
+library(mvabund)
+
+library(scales)
+library(ggrepel)
+library(corrplot)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+library(viridis)
+library(ggmap)
+library(ggsn)
+library(ggh4x)
+
+```
+
+```{r}
+## Load Site Map
+register_google(
+  key = Sys.getenv("GOOGLE_MAPS_API_KEY")
+)
+# location
+Moorea<-data.frame(lon = -149.83246425684064, lat = -17.531092816791094)
+
+#Map base
+M1<-get_map(Moorea,zoom = 12, maptype = 'satellite')
+
+bbx <- c(left=-149.802,bottom= -17.480,right=-149.805,top=-17.475)
+x <- c(bbx["left"], bbx["left"], bbx["right"], bbx["right"])
+y <- c(bbx["bottom"], bbx["top"], bbx["top"], bbx["bottom"])
+df <- data.frame(x, y)
+
+sitedata <- read.csv("../Data/site.coords.csv")
+str(sitedata)
+
+labels <- sitedata$Site
+
+
+map_plot <- ggmap(M1) +
+  geom_point(
+    data = sitedata,
+    aes(x = long, y = lat, fill = shore),
+    shape = 21,
+    size = 3,
+    color = "white",
+    stroke = 0.5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "North" = "turquoise2",
+      "East"  = "palegreen1",
+      "West"  = "plum2"
+    )
+  ) +
+  geom_text(
+    data = sitedata,
+    aes(x = long, y = lat, label = Site),
+    vjust = -1,
+    size = 3,
+    color = "white"
+  ) +
+  scalebar(
+    data = sitedata,
+    dist = 2,
+    dist_unit = "km",
+    transform = TRUE,
+    model = "WGS84",
+    st.size = 2,
+    st.color = "white",
+    box.color = "white",
+    height = 0.001,
+    location = "bottomleft"
+  ) +
+  xlab("") +
+  ylab("")
+
+map_plot
+```
+
+## Load data
+
+```{r}
+#| label: load-data
+size_data <- read_csv("../Data/pocillopora_site_species_size_density.csv")
+env_data  <- read_csv("../Data/sites_env_hyp.csv")
+```
+
+## Data preparation
+
+Missing species × size class × site combinations are filled with zero density, reflecting true absences rather than missing observations.
+
+#### Factor levels defined
+Ordered factors for 4 size classes, 6 *Pocillopora* species, and **5 environmental predictors**: `max_temp_br`, `daily_range_br`, `Hard_Coral`, `CTB_algae` (CTB + Macroalgae combined), and `wave_P_max`. CTB and macroalgae are pre-combined into a single composite (`CTB_algae`) at the data preparation stage so that the same variable definition is used consistently across NMDS, PERMANOVA, and OLR. CTB provides hard substrate that facilitates larval settlement and recruitment; macroalgae can compete with, damage, or smother established colonies and block larval settlement. A further reduced **3-predictor set** (`daily_range_br`, `wave_P_max`, `CTB_algae`) is used for OLR only, where sample size (n = 11) limits the number of estimable parameters; `max_temp_br` is dropped due to collinearity with wave power (ρ = 0.78) and `Hard_Coral` is dropped due to low explanatory priority given its moderate collinearity with both wave power (ρ = 0.71) and daily temperature range (ρ = 0.66).
+
+#### Zero-filling
+All site × species × size class combinations are completed via `expand_grid()` + `left_join()`, with missing densities replaced by 0 (true absences, not missing data).
+
+#### Joined long-format dataset (`data_full`)
+The zero-filled size data is joined to the cleaned environmental data. `site.name` is set as an ordered factor matching geographic sequence (S2–S18).
+
+#### Multivariate matrices
+- `comm_wide` / `comm_mat`: a sites × (species × size class) community matrix for multivariate analyses (e.g., PERMANOVA), with special characters replaced by underscores in column names.
+- `env_mat`: a matching sites × 5-predictor environmental matrix, same site order as `comm_mat`.
+- `env_perm`: a version of the environmental data with `shore` as a plain character vector, suitable for `adonis2()`.
+
+#### Standardization
+All 5 environmental predictors are z-scored (appended as `*_z` columns) for use in regression models. Because `CTB_algae` is in `env_vars`, `CTB_algae_z` is created automatically by the `across()` call.
+
+```{r}
+#| label: data-prep
+# Ordered factor levels
+size_levels    <- c("0-2cm", ">2cm-5cm", ">5cm-14cm", ">14cm")
+species_levels <- c("P. acuta", "P. effusa", "P. grandis",
+                    "P. meandrina", "P. tuahiniensis", "P. verrucosa")
+env_vars <- c("max_temp_br", "daily_range_br", "Hard_Coral", "CTB_algae", "wave_P_max")
+env_labels <- c("Max temp (°C)", "Daily temp range (°C)", "Hard coral",
+                "CTB + Macro", "Max wave power")
+env_label_map <- setNames(env_labels, env_vars)
+
+shore_cols      <- c(North = "#4BACC6", East = "#70AD47", West = "#C55A94")
+
+# Reduced 3-predictor set for OLR (5 → 3 for sample-size constraints at n = 11)
+# max temp dropped — collinear with wave power (ρ = 0.78); Hard Coral dropped — low explanatory priority
+# CTB_algae retained: captures both recruitment substrate availability (CTB) and macroalgal competition/smothering pressure
+olr_vars   <- c("daily_range_br", "wave_P_max",      "CTB_algae")
+olr_vars_z <- c("daily_range_br_z", "wave_P_max_z",  "CTB_algae_z")
+olr_labels <- c("Daily temp range (°C)", "Max wave power", "CTB + Macro")
+
+# Complete all species × size class × site combinations with zeros
+size_complete <- expand_grid(
+  site.name = unique(size_data$site.name),
+  Species   = species_levels,
+  SizeClass = size_levels
+) |>
+  left_join(
+    size_data |> select(site.name, Species, SizeClass, Density_m2),
+    by = c("site.name", "Species", "SizeClass")
+  ) |>
+  mutate(
+    Density_m2 = replace_na(Density_m2, 0),
+    SizeClass  = factor(SizeClass, levels = size_levels),
+    Species    = factor(Species,   levels = species_levels)
+  )
+
+# Environmental data with ordered shore factor; CTB_algae composite computed here
+# so it is available for env_mat and all downstream analyses
+env_clean <- env_data |>
+  mutate(
+    shore     = factor(shore, levels = c("North", "East", "West")),
+    CTB_algae = CTB + Macroalgae
+  )
+
+# Full joined dataset (long format)
+data_full <- size_complete |>
+  left_join(env_clean, by = "site.name")
+
+data_full <- data_full |>
+  mutate(
+    site.name = factor(site.name, levels = c("S18", "S15", "S14", "S12", "S11", "S9",
+                                             "S6", "S5","S4", "S3", "S2"))
+)
+
+# Wide-format community matrix for multivariate analyses
+# Special characters in species/size names replaced with underscores
+comm_wide <- size_complete |>
+  mutate(sp_size = gsub("[^A-Za-z0-9]", "_",
+                        paste(as.character(Species),
+                              as.character(SizeClass), sep = "_"))) |>
+  select(site.name, sp_size, Density_m2) |>
+  pivot_wider(names_from  = sp_size,
+              values_from = Density_m2,
+              values_fill = 0) |>
+  arrange(site.name)
+
+# Community matrix (rows = sites, cols = species × size class)
+comm_mat <- comm_wide |>
+  column_to_rownames("site.name") |>
+  as.matrix()
+
+# Environmental predictor matrix (same site order as comm_mat)
+env_mat <- env_clean |>
+  arrange(site.name) |>
+  column_to_rownames("site.name") |>
+  select(all_of(env_vars)) |>
+  as.data.frame()
+
+# env data frame for permutation tests (shore as character for adonis2)
+env_perm <- env_clean |>
+  arrange(site.name) |>
+  mutate(shore = as.character(shore)) |>
+  column_to_rownames("site.name")
+
+# Standardized (z-scored) env predictors — used by regression models
+# CTB_algae is in env_vars so CTB_algae_z is created automatically by across()
+env_vars_z <- paste0(env_vars, "_z")
+env_clean <- env_clean |>
+  mutate(across(all_of(env_vars), ~scale(.)[, 1], .names = "{.col}_z"))
+
+```
+#### Chunk 1 summary
+The dataset includes `{r} nrow(env_clean)` sites, `{r} length(species_levels)` *Pocillopora* species, and `{r} length(size_levels)` size classes, yielding `{r} nrow(size_complete)` site × species × size-class observations after zero-filling.
+
+# Data overview of Environmental variables by site
+Before modeling, examine data as a pre-modeling sanity check for a site-by-site view of temperature, benthic cover, and wave conditions before any analysis.
+
+```{r}
+#| label: env-table
+env_clean |>
+  arrange(site.name) |>
+  select(site.name, shore, all_of(env_vars)) |>
+  rename(Site = site.name, Shore = shore) |>
+  rename_with(~env_labels, all_of(env_vars)) |>
+  kable(
+    digits  = 3,
+    caption = "Environmental variables measured at each study site."
+  ) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  )
+```
+
+## Correlations among environmental predictors
+Before modeling, inspect collinearity among the five predictors. CTB and macroalgae are pre-combined into `CTB_algae`, a composite capturing both CTB as recruitment substrate and macroalgae as a source of competition and smothering pressure on established colonies. Highly correlated predictors (\|ρ\| \> 0.7) should not be included in the same model.
+
+```{r}
+#| label: env-correlation
+#| fig-cap: "**Supplemental Figure 1a.** Spearman rank correlations among the five environmental predictors. CTB and macroalgae are pre-combined into a single composite (CTB + Macro) capturing both recruitment substrate availability (CTB) and macroalgal competition and smothering pressure. Variables are clustered by hierarchical clustering. Number in each cell = ρ. Collinear predictors (|ρ| > 0.7) should not be included simultaneously in multivariate models."
+cor_env <- cor(env_mat, method = "spearman")
+colnames(cor_env) <- rownames(cor_env) <- env_labels
+
+corrplot(
+  cor_env,
+  method      = "color",
+  type        = "upper",
+  order       = "hclust",
+  tl.col      = "black",
+  tl.srt      = 45,
+  tl.cex      = 0.85,
+  addCoef.col = "black",
+  number.cex  = 0.70,
+  mar         = c(0, 0, 1, 0)
+)
+```
+
+#### Summary 
+env-correlation (Supplemental Figure 1a) — Full 6-predictor set Computes a Spearman correlation matrix across all six environmental predictors using env_mat, then displays it as a color-coded upper-triangle corrplot with hierarchical clustering order and ρ values annotated in each cell. The threshold for flagging collinearity is |ρ| > 0.7.
+
+```{r}
+#| label: env-correlation-olr
+#| fig-cap: "**Supplemental Figure 1b.** Spearman rank correlations among the reduced 3-predictor set used in OLR models: daily temperature range, maximum wave power, and CTB + Macro (a composite of CTB as recruitment substrate and macroalgae as a source of competition and smothering pressure). Number in each cell = ρ."
+cor_olr <- env_clean |>
+  select(all_of(olr_vars)) |>
+  cor(method = "spearman")
+colnames(cor_olr) <- rownames(cor_olr) <- olr_labels
+
+corrplot(
+  cor_olr,
+  method      = "color",
+  type        = "upper",
+  order       = "hclust",
+  tl.col      = "black",
+  tl.srt      = 45,
+  tl.cex      = 0.85,
+  addCoef.col = "black",
+  number.cex  = 0.70,
+  mar         = c(0, 0, 1, 0)
+)
+```
+#### Summary 
+env-correlation-olr (Supplemental Figure 1b) — Reduced OLR set Computes the same Spearman correlation for the 3-predictor OLR subset (daily_range_br, wave_P_max, CTB_algae) drawn from env_clean. Uses identical plot styling for direct comparison. Its purpose is to confirm the reduced predictor set is sufficiently uncorrelated before fitting the ordinal logistic regression models.
+
+
+## Colony density overview
+
+Before hypothesis-testing, a density heatmap and per-site totals provide context for interpreting the analytical results — which species dominate, which sites are most and least abundant, and where zeros are common. These panels are assembled in Supplemental Figure 2.
+
+density-heatmap (include: false) — Builds p_dens_heat: a tile plot of log-transformed density (log1p(Density_m2)) across all site × species × size-class combinations. Sites run along the x-axis, species × size class combinations on the y-axis, colored by the plasma viridis palette. Site order is reversed so sites read top-to-bottom geographically.
+
+```{r}
+#| label: density-heatmap
+#| include: false
+p_dens_heat <- data_full |>
+  mutate(
+    site.name = factor(
+      site.name,
+      levels = rev(levels(site.name))
+    ),
+    sp_size  = paste(as.character(Species),
+                     as.character(SizeClass), sep = "\n"),
+    sp_size  = factor(
+      sp_size,
+      levels = paste(
+        rep(species_levels, each = length(size_levels)),
+        rep(size_levels, times = length(species_levels)),
+        sep = "\n"
+      )
+    ),
+    log_dens = log1p(Density_m2)
+  ) |>
+  ggplot(aes(x = site.name, y = sp_size, fill = log_dens))+ 
+  geom_tile(color = "white", linewidth = 0.3) +
+  scale_fill_viridis_c(name = "log(dens + 1)", option = "plasma") +
+  labs(
+    x = "Site",
+    y = NULL,
+    title = "Colony density across sites, species, and size classes"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 7),
+    panel.grid = element_blank()
+  )
+p_dens_heat
+```
+
+# Size-frequency distributions
+
+## Size structure by species and shore
+size-freq-shore (include: false) — Builds p_sizefreq: a grouped bar chart of mean density ± SE per size class, faceted by species (3-column grid), with shore (North/East/West) as the fill. Not used in Supplemental Figure 2 but presumably appears elsewhere.
+
+```{r}
+#| label: size-freq-shore
+#| include: false
+p_sizefreq <- data_full |>
+  group_by(Species, SizeClass, shore) |>
+  summarize(
+    mean_dens = mean(Density_m2),
+    se_dens   = sd(Density_m2) / sqrt(n()),
+    .groups   = "drop"
+  ) |>
+  ggplot(aes(x = SizeClass, y = mean_dens, fill = shore)) +
+  geom_col(position = position_dodge(0.85), width = 0.8) +
+  geom_errorbar(
+    aes(ymin = mean_dens - se_dens, ymax = mean_dens + se_dens),
+    position = position_dodge(0.85),
+    width    = 0.25
+  ) +
+  facet_wrap(~Species, scales = "free_y", ncol = 3) +
+  scale_fill_manual(
+    values = c(
+      North = alpha("turquoise2", 0.8),
+      East  = alpha("palegreen1", 0.8),
+      West  = alpha("plum2",      0.8)
+    ),
+    name = "Shore"
+  ) +
+  labs(
+    x     = "Size class",
+    y     = expression(Mean~density~(colonies~m^{-2})),
+    title = "Size-frequency distributions by species and shore"
+  ) +
+  theme_bw(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, size = 8),
+        strip.text  = element_text(face = "bold.italic", size = 11))
+p_sizefreq
+```
+
+## Total density by species and site
+total-density-site (include: false) — Builds p_total_dens: horizontal stacked bars of total density (summed across size classes) per site, faceted by species with italicized parsed labels. Shore drives the fill color.
+```{r}
+#| label: total-density-site
+#| include: false
+species_labs <- c(
+  "P. acuta"        = "italic('P. acuta')",
+  "P. effusa"       = "italic('P. effusa')",
+  "P. grandis"      = "italic('P. grandis')",
+  "P. meandrina"    = "italic('P. meandrina')",
+  "P. tuahiniensis" = "italic('P. tuahiniensis')",
+  "P. verrucosa"    = "italic('P. verrucosa')"
+)
+
+p_total_dens <- data_full |>
+  group_by(site.name, Species, shore) |>
+  summarize(total_dens = sum(Density_m2), .groups = "drop") |>
+  ggplot(aes(x = total_dens,
+             y = site.name,
+             fill = shore)) +
+  geom_col() +
+  facet_wrap(
+    ~Species,
+    scales = "free_x",
+    ncol = 3,
+    labeller = labeller(
+      Species = as_labeller(species_labs, label_parsed)
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      North = alpha("turquoise2", 0.8),
+      East  = alpha("palegreen1", 0.8),
+      West  = alpha("plum2",      0.8)
+    ),
+    name = "Shore"
+  ) +
+  labs(
+    x = expression(Total~density~(colonies~m^{-2})),
+    y = "Site",
+    title = "Total colony density by site and species"
+  ) +
+  theme_bw(base_size = 10) +
+  theme(
+    strip.text = element_text(face = "bold", size = 11)
+  )
+```
+
+## Supplemental Figure 2
+suppfig2 — Assembles the final figure using patchwork: p_dens_heat on top (panel A) and p_total_dens below (panel B), with a 1.2:1 height ratio. Output is 14×13 inches.
+
+```{r}
+#| label: suppfig2
+#| fig-width: 14
+#| fig-height: 13
+#| fig-cap: "**Supplemental Figure 2.** Colony density overview. **A:** Log-transformed colony density (log[density + 1], colonies m⁻²) across all site × species × size-class combinations; zeros are included. **B:** Total colony density (summed across size classes) per site for each species."
+p_dens_heat / p_total_dens +
+  plot_layout(heights = c(1.2, 1)) +
+  plot_annotation(tag_levels = "A",
+                  theme = theme(plot.tag = element_text(face = "bold", size = 12)))
+```
+
+## Proportional size-class composition
+
+```{r}
+#| label: size-proportion
+#| include: false
+p_sizeprop <- data_full |>
+  group_by(site.name, Species) |>
+  mutate(prop = Density_m2 / sum(Density_m2)) |>
+  # Sites with zero total density produce NaN — replace with 0
+  mutate(prop = replace_na(prop, 0)) |>
+  ungroup() |>
+  mutate(
+    site.name = factor(
+      site.name,
+      levels = rev(levels(site.name))
+    )) |>
+  ggplot(aes(x = site.name, y = prop, fill = SizeClass)) +
+  geom_col(position = "stack") +
+  facet_grid2(
+    Species ~ shore,
+    scales = "free_x",
+    space  = "free_x",
+    strip  = strip_themed(
+      background_x = elem_list_rect(
+        fill = c(
+          alpha("turquoise2", 0.4),  # North
+          alpha("palegreen1", 0.4),  # East
+          alpha("plum2",      0.4)   # West
+        )
+      )
+    )
+  ) +
+  scale_fill_viridis_d(name = "Size class", option = "D", direction = -1) +
+  labs(
+    x     = "Site",
+    y     = "Proportion of colonies",
+    title = "Proportional size-class composition by species and shore"
+  ) +
+  theme_bw(base_size = 9) +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 7),
+    strip.text.y = element_text(face = "italic", size = 7),
+    strip.text = element_text(face = "bold", size = 11)
+  )
+```
+
+```{r}
+#| label: rel-abund-site
+#| include: false
+rel_abund_site <- data_full |>
+  group_by(site.name, shore, Species) |>
+  summarise(total_dens = sum(Density_m2), .groups = "drop") |>
+  group_by(site.name) |>
+  mutate(rel_abund = total_dens / sum(total_dens)) |>
+  mutate(rel_abund = replace_na(rel_abund, 0)) |>
+  ungroup()
+
+rel_abund_site <- rel_abund_site |>
+  mutate(site.name = factor(site.name, levels = rev(levels(site.name))))
+
+p_rel_abund <- ggplot(rel_abund_site,
+                      aes(x = site.name, y = rel_abund, fill = Species)) +
+  geom_col() +
+  facet_grid2(
+    ~ shore,
+    scales = "free_x",
+    space  = "free_x",
+    strip  = strip_themed(
+      background_x = elem_list_rect(
+        fill = c(
+          alpha("turquoise2", 0.4),  # North
+          alpha("palegreen1", 0.4),  # East
+          alpha("plum2",      0.4)   # West
+        )
+      )
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      "P. tuahiniensis" = "#D55E00",
+      "P. meandrina"    = "#0072B2",
+      "P. verrucosa"    = "#E69F00",
+      "P. grandis"      = "#56B4E9",
+      "P. effusa"       = "#009E73",
+      "P. acuta"        = "#e63946"
+    ),
+    labels = c(
+      "P. tuahiniensis" = expression(italic("P. tuahiniensis")),
+      "P. meandrina"    = expression(italic("P. meandrina")),
+      "P. verrucosa"    = expression(italic("P. verrucosa")),
+      "P. grandis"      = expression(italic("P. grandis")),
+      "P. effusa"       = expression(italic("P. effusa")),
+      "P. acuta"        = expression(italic("P. acuta"))
+    )
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 1, by = 0.25),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(
+    x    = "Site",
+    y    = "Relative abundance",
+    fill = NULL
+  ) +
+  theme_bw(base_size = 9) +
+  theme(
+    strip.text.x = element_text(face = "bold", size = 11),
+    axis.text.x       = element_text(angle = 45, hjust = 1, size = 7),
+    legend.position   = "right",
+    legend.title      = element_blank(),
+    legend.text       = element_text(size = 6, hjust = 0),
+    legend.key.height = unit(0.4, "cm")
+  )
+```
+
+```{r}
+#| label: fig1
+#| fig-width: 14
+#| fig-height: 16
+#| fig-cap: "**Figure 1.** *Pocillopora* species composition and size-frequency distributions across shores in Mo'orea, French Polynesia (n = 11 sites). **A:** Site map of coral collections and benthic substrate characterization **B:**Relative abundance of each *Pocillopora* species per site, calculated from summed colony density across size classes. **C:** Mean colony density (±1 SE) per size class, species, and shore. **D:** Proportional size-class composition at each site, organized by shore. Deviations from a juvenile-dominated structure indicate sites with reduced recent recruitment or elevated small-colony mortality."
+(map_plot | p_rel_abund) / p_sizefreq / p_sizeprop +
+  plot_layout(heights = c(0.7, 1, 1.3)) +
+  plot_annotation(tag_levels = "A",
+                  theme = theme(plot.tag = element_text(face = "bold", size = 12)))
+
+fig1 <- (map_plot | p_rel_abund) / p_sizefreq / p_sizeprop +
+  plot_layout(heights = c(0.7, 1, 1.3)) +
+  plot_annotation(tag_levels = "A",
+                  theme = theme(plot.tag = element_text(face = "bold", size = 12)))
+
+ggsave(here::here("Output", "Figure1.pdf"), fig1, width = 14, height = 16, units = "in")
+ggsave(here::here("Output", "Figure1.jpg"), fig1, width = 14, height = 16, units = "in", dpi = 300)
+
+```
+## Interpretation
+Panel A — Species composition
+
+P. meandrina dominates at every site (44–65% relative abundance), with no exception across all 11 sites. The North shore is notably more diverse: P. effusa is a consistent second (~20%), while P. grandis, P. tuahiniensis, and P. verrucosa each contribute ~10%. East and West shores are more strongly P. meandrina-dominated (~63% and ~60% respectively), with P. effusa largely absent (<6%). P. acuta is consistently rare everywhere (<6%).
+
+Panel B — Size-frequency distributions
+
+P. meandrina drives the density signal, with the highest absolute densities across all shores and size classes. Most species show a decline in density from small to large size classes, consistent with a roughly juvenile-skewed structure. P. effusa stands out on the North shore with noticeably higher densities across all size classes relative to East and West.
+
+Panel C — Proportional size-class composition
+
+The three shores differ in size structure:
+| Shore | 0–2 cm | >14 cm | Pattern |
+| --- | --- | --- | --- |
+| North | 38% | 11% | Moderate recruitment, mixed structure |
+| East | 55% | 10% | Strongly juvenile-dominated |
+| West | 27% | 37% | Large-colony dominated |
+
+The West shore is the most striking — roughly a third of colonies exceed 14 cm, the inverse of the East shore. This could reflect reduced recent recruitment, greater longevity of established colonies, or differential mortality of juveniles on the West shore. The East shore's juvenile-heavy structure is consistent with either high recent recruitment or a post-disturbance recovery trajectory.
+
+# Multivariate community analysis
+
+All analyses in this section use Bray–Curtis dissimilarities computed from the species × size-class density matrix. Permutation-based methods are used throughout because they make no distributional assumptions and are appropriate for the small sample size (n = `{r} nrow(env_clean)` sites).
+
+## NMDS ordination
+
+nmds-run
+
+Computes a Bray–Curtis dissimilarity matrix from comm_mat.
+Fits a 2D NMDS (metaMDS, k = 2, trymax = 500, seed 3947).
+
+Fits environmental vectors onto the ordination with envfit (999 permutations, same seed), using all 6 raw predictors from env_mat.
+
+Prints stress and a quick guide (< 0.10 good, < 0.20 acceptable).
+nmds-plot (include: false) 
+```{r}
+#| label: nmds-run
+dist_bray <- vegdist(comm_mat, method = "bray")
+
+set.seed(3947)
+nmds_result <- metaMDS(
+  comm_mat,
+  distance = "bray",
+  k        = 2,
+  trymax   = 500,
+  trace    = FALSE
+)
+
+cat("NMDS stress:", round(nmds_result$stress, 4), "\n")
+cat("Interpretation: < 0.10 = good, < 0.20 = acceptable, > 0.20 = interpret cautiously\n")
+
+# Fit environmental vectors in the same cached cell to avoid stale-cache issues
+set.seed(3947)
+ef <- envfit(nmds_result, env_mat, permutations = 999)
+print(ef)
+```
+
+```{r}
+#| label: nmds-plot
+#| include: false
+# Site scores joined with environmental data
+nmds_sites <- vegan::scores(nmds_result, display = "sites") |>
+  as.data.frame() |>
+  rownames_to_column("site.name") |>
+  left_join(env_clean, by = "site.name")
+
+# envfit vector data — use vegan::scores() explicitly to avoid pls masking
+ef_vec_raw <- vegan::scores(ef, display = "vectors")
+if (is.null(ef_vec_raw)) stop("envfit returned no vector scores — check that env_mat is non-degenerate.")
+
+ef_df <- as.data.frame(ef_vec_raw) |>
+  rownames_to_column("variable") |>
+  mutate(
+    label       = env_label_map[variable],
+    p_val       = ef$vectors$pvals,
+    significant = p_val < 0.05
+  )
+
+ef_sig <- ef_df |> filter(significant)
+ef_ns  <- ef_df |> filter(!significant)
+
+p_nmds_ord <- ggplot(nmds_sites, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(aes(color = shore), size = 4) +
+  geom_text_repel(aes(label = site.name, color = shore),
+                  show.legend = FALSE, size = 3) +
+  # Non-significant arrows
+  geom_segment(
+    data  = ef_ns,
+    aes(x = 0, y = 0, xend = NMDS1 * 0.6, yend = NMDS2 * 0.6),
+    arrow = arrow(length = unit(0.22, "cm")),
+    color = "grey70", linewidth = 0.7
+  ) +
+  geom_text_repel(
+    data  = ef_ns,
+    aes(x = NMDS1 * 0.65, y = NMDS2 * 0.65, label = label),
+    color = "grey60", size = 2.8
+  ) +
+  # Significant arrows
+  geom_segment(
+    data  = ef_sig,
+    aes(x = 0, y = 0, xend = NMDS1 * 0.6, yend = NMDS2 * 0.6),
+    arrow = arrow(length = unit(0.28, "cm")),
+    color = "darkred", linewidth = 1.0
+  ) +
+  geom_text_repel(
+    data  = ef_sig,
+    aes(x = NMDS1 * 0.65, y = NMDS2 * 0.65, label = label),
+    color = "darkred", size = 3.2, fontface = "bold"
+  ) +
+  annotate("text", x = Inf, y = -Inf,
+           label = paste0("Stress = ", round(nmds_result$stress, 3)),
+           hjust = 1.1, vjust = -0.5, size = 3.2, color = "grey40") +
+  scale_color_brewer(palette = "Set2", name = "Shore") +
+  labs(
+    title   = "NMDS ordination with environmental vectors",
+    caption = "Red arrows: envfit p < 0.05 (999 permutations)"
+  ) +
+  theme_bw(base_size = 11)
+```
+
+**Interpretation.** The ordination has excellent stress (0.059), indicating a reliable 2D representation. Two predictors reached conventional significance via envfit: daily temperature range (r² = 0.536, p = 0.027) and CTB + Macro (r² = 0.524, p = 0.041). Their arrows point in roughly opposing directions, indicating that sites with high thermal variability tend to have lower CTB and macroalgae cover, and vice versa. This gradient is ecologically interpretable: CTB provides hard substrate that facilitates larval settlement and recruitment, while macroalgae can compete with and smother established colonies — both processes potentially shaping community composition independently of thermal stress. Hard coral cover is marginally non-significant (p = 0.090). North shore sites (S2–S4) cluster together and separate from West and East sites, indicating shore-level structure in community composition correlated with both the thermal variability gradient and the CTB–macroalgae cover gradient.
+
+
+## PERMANOVA
+Because simultaneously fitting all predictors is not feasible at n = 11 (it would exhaust degrees of freedom), individual PERMANOVA tests were run for each predictor. These are marginal (unconditional) tests and do not control for covariation among predictors. Results are FDR-adjusted for multiple comparisons.
+
+```{r}
+#| label: permanova
+set.seed(3947)
+perm_results <- map_dfr(
+  c("shore", env_vars),
+  function(v) {
+    form   <- as.formula(paste("dist_bray ~", v))
+    result <- adonis2(form, data = env_perm, permutations = 999)
+    tibble(
+      Predictor = v,
+      Df        = result$Df[1],
+      R2        = result$R2[1],
+      F_stat    = result$F[1],
+      p_value   = result$`Pr(>F)`[1]
+    )
+  }
+)
+
+perm_results |>
+  mutate(
+    Predictor = c("Shore", env_labels),
+    p_adj     = p.adjust(p_value, method = "BH"),
+    sig       = case_when(
+      p_adj < 0.001 ~ "***",
+      p_adj < 0.01  ~ "**",
+      p_adj < 0.05  ~ "*",
+      p_adj < 0.10  ~ ".",
+      TRUE          ~ ""
+    )
+  ) |>
+  kable(
+    digits    = c(0, 0, 3, 3, 4, 4, 0),
+    col.names = c("Predictor", "df", "R²", "F", "p", "p (FDR)", ""),
+    caption   = "Individual PERMANOVA results (adonis2, Bray–Curtis, 999 permutations). Each predictor tested separately. R² = proportion of community dissimilarity explained."
+  ) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Interpretation.** No predictor survived FDR correction (all p~adj~ ≥ 0.112), which is expected at n = 11; with only 11 sites, permutation tests have few unique arrangements and little power to detect moderate effects. R² (proportion of Bray–Curtis dissimilarity explained) is therefore the more informative quantity. Shore identity has the largest marginal R² (R² = 0.281, p = 0.179), indicating that geographic position accounts for more community variation than any single environmental predictor — though it too is underpowered. Among individual predictors, CTB + Macro (R² = 0.215, p = 0.038) and daily temperature range (R² = 0.214, p = 0.028) are the only two with nominal p < 0.05 and are nearly identical in explanatory power, together suggesting that the CTB–macroalgae benthic cover gradient (reflecting both recruitment substrate availability and macroalgal competition pressure) and thermal variability are the primary environmental correlates of community composition. Hard coral cover is marginal (R² = 0.203, p = 0.056), followed by maximum wave power (R² = 0.194, p = 0.081) and maximum temperature (R² = 0.169, p = 0.137). These results are consistent with the envfit ordination, where CTB + Macro and daily temperature range were the two significant vector fits.
+
+# Mantel and partial Mantel tests
+
+Mantel tests correlate community dissimilarity (Bray–Curtis) with distances in single environmental predictors — a permutation-based approach with no distributional assumptions, well-suited to small n. The **partial Mantel test** extends this to control for geographic structure (shore): it regresses out the effect of a binary shore-distance matrix (same shore = 0, different shore = 1) before testing each predictor. This is critical given the North/West/East gradient in Mo'orea, which may confound individual predictor effects.
+
+What is the relationship between community dissimilarity and each environmental predictors without controlling for shore (unconditional) and with controlling for shore (partial)?
+Ho: There is no relationship between community dissimilarity and each environmental predictors 
+
+```{r}
+#| label: mantel-prep
+# Geographic distance proxy: 0 = same shore, 1 = different shore
+shore_vec <- env_clean |> arrange(site.name) |> pull(shore)
+geo_dist  <- as.dist(
+  outer(as.character(shore_vec), as.character(shore_vec),
+        FUN = function(a, b) as.numeric(a != b))
+)
+```
+
+```{r}
+#| label: mantel-tests
+set.seed(3947)
+mantel_results <- map_dfr(env_vars, function(v) {
+  # Euclidean distance on the single standardized predictor
+  env_d <- dist(scale(env_mat[[v]]))
+
+  m  <- mantel(dist_bray, env_d, method = "spearman", permutations = 9999)
+  pm <- mantel.partial(dist_bray, env_d, geo_dist,
+                       method = "spearman", permutations = 9999)
+
+  tibble(
+    Predictor  = env_label_map[v],
+    mantel_r   = round(m$statistic,  3),
+    mantel_p   = round(m$signif,     4),
+    partial_r  = round(pm$statistic, 3),
+    partial_p  = round(pm$signif,    4)
+  )
+})
+
+mantel_results |>
+  mutate(
+    mantel_sig  = case_when(mantel_p  < 0.05 ~ "*", mantel_p  < 0.10 ~ ".", TRUE ~ ""),
+    partial_sig = case_when(partial_p < 0.05 ~ "*", partial_p < 0.10 ~ ".", TRUE ~ "")
+  ) |>
+  kable(
+    col.names = c("Predictor",
+                  "Mantel r", "p", "",
+                  "Partial r", "p (|shore)", ""),
+    caption = "Mantel (unconditional) and partial Mantel (controlling for shore) tests between community Bray–Curtis dissimilarity and individual environmental predictors. Spearman correlation statistic; 9,999 permutations."
+  ) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+#| label: mantel-plot
+#| include: false
+p_mantel <- mantel_results |>
+  pivot_longer(
+    cols      = c(mantel_r, partial_r),
+    names_to  = "test",
+    values_to = "r"
+  ) |>
+  mutate(
+    test      = factor(test,
+                       levels = c("mantel_r", "partial_r"),
+                       labels = c("Mantel (unconditional)",
+                                  "Partial Mantel (|shore)")),
+    Predictor = factor(Predictor, levels = rev(env_labels))
+  ) |>
+  ggplot(aes(x = r, y = Predictor, fill = test)) +
+  geom_col(position = position_dodge(0.7), width = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey40") +
+  scale_fill_manual(values = c("grey60", "steelblue"), name = NULL) +
+  labs(
+    x       = "Mantel r (Spearman)",
+    y       = NULL,
+    title   = "Mantel and partial Mantel tests",
+    caption = "Positive r = sites similar in this predictor are also similar in community composition"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+#| label: fig2
+#| fig-width: 14
+#| fig-height: 6
+#| fig-cap: "**Figure 2.** Multivariate analysis of *Pocillopora* community composition (species × size-class density matrix, Bray–Curtis dissimilarity). **A:** NMDS ordination (stress = 0.059). Dark red arrows = significant envfit vectors (daily temperature range: r² = 0.536, p = 0.027; CTB + Macro: r² = 0.524, p = 0.041; 999 permutations); grey arrows = non-significant. The opposing arrow directions indicate that sites with high thermal variability tend to have lower CTB and macroalgae cover. **B:** Simple (grey) and partial Mantel r statistics controlling for shore (blue). CTB + Macro is the strongest predictor of community dissimilarity (simple r = 0.43, p = 0.017) and retains this signal after controlling for shore geography (partial r = 0.43, p = 0.016), indicating the CTB–macroalgae cover gradient is independent of site location."
+fig2 <- p_nmds_ord + p_mantel +
+  plot_layout(widths = c(1.1, 1)) +
+  plot_annotation(tag_levels = "A",
+                  theme = theme(plot.tag = element_text(face = "bold", size = 12)))
+
+ggsave(here::here("Output", "Figure2.pdf"), fig2, width = 14, height = 6, units = "in")
+ggsave(here::here("Output", "Figure2.jpg"), fig2, width = 14, height = 6, units = "in", dpi = 300)
+fig2
+```
+
+**Interpretation.** CTB + Macro produces the strongest and most consistent signal: simple Mantel r = 0.427 (p = 0.017), and the partial Mantel — controlling for geographic shore structure — is nearly identical (r = 0.433, p = 0.016). The fact that the partial correlation is no weaker than the simple correlation suggests the CTB–macroalgae cover gradient is not simply a proxy for shore identity; it retains an independent association with community dissimilarity after geographic position is accounted for. Hard coral cover is also significant in both tests (r = 0.280, p = 0.034; partial r = 0.257, p = 0.048), indicating that sites with similar coral cover tend to host more similar *Pocillopora* communities, independently of shore. The remaining predictors — daily temperature range, maximum temperature, and wave power — are not significant in either Mantel test (all p ≥ 0.09). This is a notable contrast with the PERMANOVA and envfit results, where daily temperature range was the most consistently significant predictor. The discrepancy likely reflects a difference in what each method measures: PERMANOVA and envfit capture the overall multivariate association between a predictor and community composition, whereas the Mantel test specifically asks whether sites that are more dissimilar in a single predictor also tend to be more dissimilar in community composition — a relationship that may be weaker or non-monotonic for temperature. Taken together, CTB + Macro — capturing both the availability of hard substrate for larval settlement (CTB) and the pressure of macroalgal competition on established colonies — emerges as the most robust predictor of community dissimilarity across all three multivariate approaches.
+
+# Species–environment correlations
+
+## Spearman correlation heatmap
+
+Spearman rank correlations between colony density and each environmental predictor were computed for every species × size-class combination (n = `{r} nrow(env_clean)` sites per correlation). All `{r} length(env_vars) * length(species_levels) * length(size_levels)` p-values (5 predictors × 6 species × 4 size classes) were adjusted jointly using the Benjamini–Hochberg FDR procedure. Given n = 11, these tests have low statistical power and results should be treated as exploratory indicators of effect direction and magnitude rather than confirmatory evidence.
+
+```{r}
+#| label: spearman-compute
+sp_size_combos <- data_full |>
+  distinct(Species, SizeClass) |>
+  arrange(Species, SizeClass)
+
+cor_results <- map_dfr(seq_len(nrow(sp_size_combos)), function(i) {
+  sp <- as.character(sp_size_combos$Species[i])
+  sz <- as.character(sp_size_combos$SizeClass[i])
+
+  sub <- data_full |>
+    filter(as.character(Species)   == sp,
+           as.character(SizeClass) == sz)
+
+  map_dfr(seq_along(env_vars), function(j) {
+    test <- cor.test(sub$Density_m2, sub[[env_vars[j]]],
+                     method = "spearman", exact = FALSE)
+    tibble(
+      Species   = sp,
+      SizeClass = sz,
+      EnvVar    = env_labels[j],
+      rho       = as.numeric(test$estimate),
+      p_value   = test$p.value
+    )
+  })
+}) |>
+  mutate(
+    p_adj     = p.adjust(p_value, method = "BH"),
+    sig_label = case_when(
+      p_adj < 0.05 ~ "*",
+      p_adj < 0.10 ~ ".",
+      TRUE         ~ ""
+    ),
+    SizeClass = factor(SizeClass, levels = size_levels),
+    Species   = factor(Species,   levels = species_levels),
+    EnvVar    = factor(EnvVar,    levels = env_labels)
+  )
+```
+
+```{r}
+#| label: spearman-heatmap
+#| fig-height: 10
+#| fig-cap: "**Supplemental Figure 3.** Spearman ρ between colony density and each environmental predictor across all species × size-class combinations (n = 11 sites; 6 predictors × 6 species × 4 size classes = 144 tests). \\* = FDR-adjusted p < 0.05; . = p < 0.10. Positive ρ (red) indicates higher density with higher predictor values; negative ρ (blue) indicates the opposite. Algae cover = CTB + macroalgae combined."
+# Build wide rho matrix for clustering rows (sp_size) by correlation profile
+rho_wide <- cor_results |>
+  mutate(sp_size = paste(as.character(Species), as.character(SizeClass), sep = " | ")) |>
+  select(sp_size, EnvVar, rho) |>
+  pivot_wider(names_from = EnvVar, values_from = rho) |>
+  column_to_rownames("sp_size")
+
+row_order <- hclust(dist(rho_wide), method = "ward.D2")$order
+clustered_levels <- rownames(rho_wide)[row_order]
+
+cor_results |>
+  mutate(
+    sp_size = factor(
+      paste(as.character(Species), as.character(SizeClass), sep = " | "),
+      levels = clustered_levels
+    )
+  ) |>
+  ggplot(aes(x = EnvVar, y = sp_size, fill = rho)) +
+  geom_tile(color = "white", linewidth = 0.4) +
+  geom_text(aes(label = sig_label), size = 3.8, vjust = 0.75) +
+  scale_fill_gradient2(
+    low      = "#2166AC",
+    mid      = "white",
+    high     = "#D6604D",
+    midpoint = 0,
+    limits   = c(-1, 1),
+    name     = "Spearman ρ"
+  ) +
+  labs(
+    x       = NULL,
+    y       = NULL,
+    title   = "Spearman correlations: density vs. environmental predictors",
+    caption = "* FDR p < 0.05   . FDR p < 0.10"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+    axis.text.y = element_text(size  = 8),
+    panel.grid  = element_blank()
+  )
+```
+
+**Interpretation.** Hierarchical clustering of the ρ profiles reveals two broad groupings. The upper cluster captures species–size combinations with predominantly positive associations across thermal and wave predictors: large adults (>14 cm) of *P. grandis* (ρ = 0.84), *P. meandrina* (ρ = 0.83), and *P. tuahiniensis* (ρ = 0.82), as well as *P. meandrina* sub-adults (>5–14 cm, ρ = 0.80) show the strongest positive associations with daily temperature range. These four are the only tests approaching FDR-corrected significance (p~adj~ ≈ 0.087–0.097, labeled "."), and the effect is concentrated in larger size classes — not recruits or juveniles — suggesting that adult persistence, not recruitment, is correlated with the thermal variability gradient. The lower cluster groups species–size combinations with near-zero or negative ρ values, most notably *P. effusa* across all size classes. *P. effusa* juveniles (0–2 cm) show the strongest negative association with maximum temperature in the dataset (ρ = −0.71), consistent with thermal sensitivity of early life stages for this species.
+
+The CTB + Macro composite shows a size-class-dependent pattern that is ecologically interpretable given the distinct roles of its two components: CTB provides hard substrate that facilitates larval settlement and recruitment, while macroalgae can compete with, damage, or smother larger established colonies and block larval settlement. Consistent with a CTB-driven recruitment facilitation effect, small and sub-adult size classes of *P. effusa* (>2–5 cm: ρ = 0.70; >5–14 cm: ρ = 0.45) and *P. tuahiniensis* (>2–5 cm: ρ = 0.43) show positive associations with CTB + Macro. In contrast, large adults (>14 cm) of *P. verrucosa* (ρ = −0.58), *P. tuahiniensis* (ρ = −0.49), and *P. meandrina* (ρ = −0.29) show negative associations, consistent with a macroalgae competition or smothering effect on established colonies. This divergence — positive for small size classes, negative for large adults — is coherent with the hypothesis that the CTB component of the composite benefits recruits while the macroalgae component suppresses adults. However, because the two components cannot be separated within this composite, these interpretations are inferential and should be tested with the components modelled independently where sample size allows. All FDR-adjusted p-values are large (all p~adj~ ≥ 0.087) due to the number of simultaneous tests (5 predictors × 6 species × 4 size classes = 120); effect sizes (ρ) are the appropriate basis for interpretation.
+
+# Multivariate GLMs: environmental drivers of species composition
+
+Collapsing across size classes to ask whether environmental variables predict *which species are present and how abundant they are* — independent of size structure — uses multivariate generalized linear models (`manyglm`, `mvabund` package). This fits a negative binomial GLM to each species simultaneously and tests multivariate hypotheses via bootstrap resampling, accounting for the mean-variance relationship that distance-based methods like PERMANOVA ignore. Univariate models (one predictor at a time) are used for the same reasons as throughout this pipeline.
+
+Ho: Species presence and abundance is independent of size structure
+
+
+```{r}
+#| label: mvabund-data
+# Species-only response matrix (density summed across size classes)
+species_mat <- size_complete |>
+  group_by(site.name, Species) |>
+  summarize(density = sum(Density_m2), .groups = "drop") |>
+  pivot_wider(names_from = Species, values_from = density, values_fill = 0) |>
+  arrange(site.name) |>
+  column_to_rownames("site.name") |>
+  as.matrix()
+
+spp <- mvabund(species_mat)
+cat("Response matrix:", nrow(species_mat), "sites ×", ncol(species_mat), "species\n")
+
+# Standardized predictor data frame (z-scored, same site order as species_mat)
+env_perm_z <- env_clean |>
+  arrange(site.name) |>
+  mutate(shore = as.character(shore)) |>
+  column_to_rownames("site.name") |>
+  mutate(across(all_of(env_vars), ~scale(.)[, 1]))
+```
+
+```{r}
+#| label: mvabund-fit
+#| cache: true
+#| cache.extra: !expr paste(env_vars, collapse = "_")
+# Species name lookup (manyglm replaces ". " with ".." in column names)
+spp_name_map <- c(
+  "P..acuta"        = "P. acuta",
+  "P..effusa"       = "P. effusa",
+  "P..grandis"      = "P. grandis",
+  "P..meandrina"    = "P. meandrina",
+  "P..tuahiniensis" = "P. tuahiniensis",
+  "P..verrucosa"    = "P. verrucosa"
+)
+
+set.seed(3947)
+mva_results <- map_dfr(env_vars, function(v) {
+  form <- as.formula(paste("spp ~", v))
+  fit  <- manyglm(form, data = env_perm_z, family = "negative.binomial")
+  av   <- anova(fit, p.uni = "adjusted", nBoot = 999, show.time = "none")
+  raw_names <- names(av$uni.p[2, ])
+  tibble(
+    Predictor = env_label_map[v],
+    mv_p      = av$table[2, "Pr(>Dev)"],
+    Species   = factor(spp_name_map[raw_names], levels = species_levels),
+    uni_p_adj = av$uni.p[2, ],
+    coef      = coef(fit)[2, ]
+  )
+}) |>
+  mutate(Predictor = factor(Predictor, levels = env_labels))
+
+# Also run PERMANOVA on species-only matrix for R² comparison
+dist_spp_only <- vegdist(species_mat[order(rownames(species_mat)), ], method = "bray")
+
+set.seed(3947)
+perm_spp <- map_dfr(env_vars, function(v) {
+  form   <- as.formula(paste("dist_spp_only ~", v))
+  result <- adonis2(form, data = env_perm, permutations = 999)
+  tibble(Predictor = env_label_map[v],
+         R2_spp    = result$R2[1],
+         p_spp     = result$`Pr(>F)`[1])
+}) |>
+  left_join(
+    perm_results |>
+      filter(Predictor != "shore") |>
+      mutate(Predictor = env_labels) |>
+      select(Predictor, R2_full = R2, p_full = p_value),
+    by = "Predictor"
+  ) |>
+  mutate(Predictor = factor(Predictor, levels = env_labels))
+
+cat("Multivariate manyglm results:\n")
+mva_results |>
+  distinct(Predictor, mv_p) |>
+  arrange(mv_p) |>
+  kable(digits = 3,
+        col.names = c("Predictor", "Multivariate p (999 boots)"),
+        caption = "manyglm: no predictor significantly affects Pocillopora species composition.") |>
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Coefficient heatmap and R² comparison
+
+```{r}
+#| label: mvabund-figure
+#| fig-width: 12
+#| fig-height: 11
+#| fig-cap: "**Figure 3.** Environmental drivers of *Pocillopora* species composition versus size-structured community. **A:** Negative binomial coefficients (per 1 SD change in standardized predictor) from univariate manyglm models predicting each species' total density (size classes collapsed). No predictor significantly affected species composition (all multivariate p ≥ 0.228; max temp p = 0.228, wave power p = 0.259, hard coral p = 0.326, CTB + Macro p = 0.368, daily temp range p = 0.520; 999 bootstraps, n = 11 sites). **B:** PERMANOVA R² for community matrices including (blue) vs. excluding (grey) size class information. Daily temperature range shows the most dramatic gain when size structure is included: R² increases from 5% (species-only, p = 0.64) to 21% (size-structured, p = 0.028), a 4.4-fold increase, and is the only predictor to cross nominal significance when size classes are retained. CTB + Macro shows a more modest increase (14% to 22%; 1.5×), suggesting it retains some association with species composition independently of size structure — consistent with macroalgae affecting species differently from thermal variability. Together, these results indicate that environmental gradients in Mo'orea act primarily through population size structure rather than species replacement."
+
+# ── Panel A: coefficient heatmap ─────────────────────────────────────────────
+mv_p_df <- mva_results |>
+  distinct(Predictor, mv_p) |>
+  mutate(label = paste0("p = ", sprintf("%.2f", mv_p)))
+
+pA_mv <- mva_results |>
+  ggplot(aes(x = Species, y = fct_rev(Predictor), fill = coef)) +
+  geom_tile(color = "white", linewidth = 0.4) +
+  geom_text(aes(label = sprintf("%+.2f", coef)), size = 2.7, color = "grey15") +
+  scale_fill_gradient2(
+    low = "#2166AC", mid = "white", high = "#D6604D",
+    midpoint = 0, limits = c(-0.85, 0.85),
+    name = "Coefficient\n(per 1 SD, log scale)"
+  ) +
+  geom_text(data = mv_p_df,
+            aes(x = 6.65, y = fct_rev(Predictor), label = label),
+            inherit.aes = FALSE, size = 2.7, hjust = 0, color = "grey40") +
+  coord_cartesian(clip = "off") +
+  scale_x_discrete(expand = expansion(add = c(0.5, 2.8))) +
+  labs(x = NULL, y = NULL,
+       title    = "A  Environmental effects on species density (manyglm)",
+       subtitle = "Coefficients: change in log density per 1 SD. Multivariate p at right — none significant.") +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.x    = element_text(face = "italic", angle = 35, hjust = 1, size = 8.5),
+        axis.text.y    = element_text(size = 9),
+        panel.grid     = element_blank(),
+        plot.title     = element_text(face = "bold", size = 10),
+        plot.subtitle  = element_text(size = 7.5, color = "grey35"),
+        plot.margin    = margin(4, 75, 4, 4),
+        legend.key.size = unit(0.5, "cm"),
+        legend.title   = element_text(size = 8))
+
+# ── Panel B: R² comparison ────────────────────────────────────────────────────
+perm_spp_ord <- perm_spp |>
+  mutate(Predictor = fct_reorder(Predictor, R2_full))
+
+pB_mv <- perm_spp_ord |>
+  pivot_longer(c(R2_spp, R2_full),
+               names_to = "matrix", values_to = "R2") |>
+  mutate(matrix = factor(matrix,
+                         levels = c("R2_spp", "R2_full"),
+                         labels = c("Species only\n(6 spp)", "Species × size class\n(24 groups)"))) |>
+  ggplot(aes(x = R2, y = Predictor, fill = matrix)) +
+  geom_col(position = position_dodge(0.7), width = 0.6) +
+  geom_text(aes(x = R2 + 0.004,
+                label = case_when(
+                  matrix == "Species only\n(6 spp)"             & p_spp  < 0.05 ~ "*",
+                  matrix == "Species only\n(6 spp)"             & p_spp  < 0.10 ~ ".",
+                  matrix == "Species × size class\n(24 groups)" & p_full < 0.05 ~ "*",
+                  matrix == "Species × size class\n(24 groups)" & p_full < 0.10 ~ ".",
+                  TRUE ~ ""
+                )),
+            position = position_dodge(0.7), hjust = 0, size = 4.5) +
+  scale_fill_manual(values = c("grey68", "#1a6ba0"), name = NULL) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.29)) +
+  labs(x = "PERMANOVA R²", y = NULL,
+       title    = "B  How much variance does size structure information add?",
+       subtitle = "Adding size classes increases R² most for daily temp range, hard coral, and sand  |  * p < 0.05, . p < 0.10") +
+  theme_bw(base_size = 10) +
+  theme(legend.position  = "bottom",
+        legend.key.size  = unit(0.4, "cm"),
+        plot.title       = element_text(face = "bold", size = 10),
+        plot.subtitle    = element_text(size = 7.5, color = "grey35"),
+        axis.text.y      = element_text(size = 9))
+
+# ── Assemble ──────────────────────────────────────────────────────────────────
+fig3 <- pA_mv / pB_mv +
+  plot_layout(heights = c(1.1, 1)) +
+  plot_annotation(
+    title   = "Species composition vs. size-structured community: environmental drivers",
+    caption = paste0(
+      "A: manyglm negative binomial coefficients (per 1 SD); no predictor significantly affects species composition (n = 11 sites, 999 bootstraps).\n",
+      "B: PERMANOVA R² for species-only (grey) vs. species × size-class (blue) matrices. Daily temperature range explains 4× more\n",
+      "   variation when size classes are included, revealing that environmental gradients act primarily through size structure."
+    ),
+    theme = theme(plot.title   = element_text(face = "bold", size = 11, hjust = 0),
+                  plot.caption = element_text(size = 7, hjust = 0, color = "grey35",
+                                              margin = margin(t = 6)))
+  )
+
+ggsave(here::here("Output", "Figure3.pdf"), fig3, width = 12, height = 11, units = "in")
+ggsave(here::here("Output", "Figure3.jpg"), fig3, width = 12, height = 11, units = "in", dpi = 300)
+fig3
+```
+
+**Interpretation.** No environmental predictor significantly affected *Pocillopora* species composition when size classes were collapsed (all multivariate manyglm p ≥ 0.228; all species-only PERMANOVA p ≥ 0.257). No individual species showed a significant univariate response to any predictor after FDR correction (best: *P. effusa* × max temp, p~adj~ = 0.256). **The key finding is the collapse in explanatory power that occurs when size structure is removed.** Daily temperature range shows the most dramatic drop: R² falls from 21% in the full size-structured matrix (p = 0.028) to just 5% when size classes are collapsed (p = 0.64) — a 4.4-fold reduction and the only predictor to transition from nominally significant to clearly non-significant. This indicates that thermal variability is almost entirely mediated through population size structure rather than species identity. CTB + Macro shows the opposite pattern relative to the other predictors: it retains the highest species-level R² of any predictor (14%, p = 0.263) and gains the least from adding size structure (1.5× increase to 22%). This is consistent with macroalgal cover affecting which species are present to some degree — through competition or smothering pressure that may disadvantage some species more than others — independently of size structure. Hard coral cover and maximum wave power show intermediate gains (1.7× and 1.5×, respectively). Together, these results indicate that environmental gradients in Mo'orea act primarily through *population size structure* rather than species replacement — all six *Pocillopora* species co-occur broadly across sites, but differ substantially in the size composition of their populations along environmental gradients.
+
+# Ordinal logistic regression
+
+The preceding density analyses ask whether total colony abundance varies with environmental conditions. Ordinal logistic regression (OLR) asks a complementary and more direct question: **given colonies are present, do environmental conditions predict whether they tend to be in larger or smaller size classes?** This is a more natural model for size-structure data because it treats the four ordered size classes (0–2 cm \< \>2–5 cm \< \>5–14 cm \< \>14 cm) as the response rather than compressing size structure into a total density.
+
+Cumulative link mixed models (`clmm`, `ordinal` package) were used, with site as a random intercept to account for the clustering of colonies within sites. Because fitting all predictors simultaneously is not feasible at n = 11 sites, univariate models (one predictor at a time) were fit for each species. Odds ratios (OR) \> 1 indicate that a 1 SD increase in the predictor is associated with higher odds of a colony being in a *larger* size class; OR \< 1 indicates association with smaller size classes. P-values are FDR-adjusted across all 30 species × predictor models (6 species × 5 predictors). Any models that fail to converge are flagged and excluded from results.
+
+```{r}
+#| label: olr-data
+# Expand site-level count data to individual colony rows
+# Each colony inherits its site's environmental values
+colony_data <- size_data |>
+  filter(N_colonies > 0) |>
+  tidyr::uncount(N_colonies) |>
+  mutate(
+    SizeClass = factor(SizeClass, levels = size_levels, ordered = TRUE),
+    Species   = factor(Species,   levels = species_levels)
+  ) |>
+  left_join(
+    env_clean |> select(site.name, shore, all_of(env_vars), all_of(env_vars_z),
+                        CTB_algae, CTB_algae_z),
+    by = "site.name"
+  )
+
+cat("Total colonies:", nrow(colony_data), "\n")
+colony_data |>
+  count(Species, SizeClass) |>
+  tidyr::pivot_wider(names_from = SizeClass, values_from = n, values_fill = 0L)
+```
+
+```{r}
+#| label: olr-fit
+# Fit univariate clmm per species × predictor with convergence check
+safe_clmm <- function(sp, pred_z, pred_label) {
+  sub <- colony_data |> filter(Species == sp)
+  tryCatch({
+    fit      <- clmm(as.formula(paste("SizeClass ~", pred_z, "+ (1 | site.name)")),
+                     data = sub, na.action = na.omit)
+    grad_val <- tryCatch(max(abs(fit$gradient)), error = function(e) NA_real_)
+    converged <- is.na(grad_val) || grad_val < 0.01
+    coef_row  <- coef(summary(fit))[pred_z, ]
+    se        <- coef_row["Std. Error"]
+    tibble(
+      Species   = sp,
+      Predictor = pred_label,
+      OR        = round(exp(coef_row["Estimate"]),              3),
+      OR_lo     = round(exp(coef_row["Estimate"] - 1.96 * se), 3),
+      OR_hi     = round(exp(coef_row["Estimate"] + 1.96 * se), 3),
+      z_val     = round(coef_row["z value"],      2),
+      p_value   = round(coef_row["Pr(>|z|)"],     4),
+      converged = converged
+    )
+  }, error = function(e) {
+    tibble(Species = sp, Predictor = pred_label,
+           OR = NA_real_, OR_lo = NA_real_, OR_hi = NA_real_,
+           z_val = NA_real_, p_value = NA_real_, converged = FALSE)
+  })
+}
+
+olr_results <- map_dfr(species_levels, function(sp) {
+  map_dfr(seq_along(olr_vars), function(j) {
+    safe_clmm(sp, olr_vars_z[j], olr_labels[j])
+  })
+}) |>
+  mutate(
+    # BH correction across 18 tests (6 species × 3 predictors)
+    p_adj     = p.adjust(p_value, method = "BH"),
+    Species   = factor(Species,   levels = species_levels),
+    Predictor = factor(Predictor, levels = olr_labels)
+  )
+
+cat("Non-converged models:\n")
+olr_results |>
+  filter(!converged) |>
+  select(Species, Predictor) |>
+  print()
+```
+
+## Odds ratio heatmap
+
+```{r}
+#| label: olr-heatmap
+#| include: false
+p_olr_heat <- olr_results |>
+  filter(converged) |>
+  mutate(
+    log_OR    = log(OR),
+    sig_label = case_when(
+      p_adj < 0.05 ~ "*",
+      p_adj < 0.10 ~ ".",
+      TRUE         ~ ""
+    )
+  ) |>
+  ggplot(aes(x = Predictor, y = Species, fill = log_OR)) +
+  geom_tile(color = "white", linewidth = 0.4) +
+  geom_text(aes(label = sig_label), size = 4, vjust = 0.8) +
+  scale_fill_gradient2(
+    low      = "#2166AC",
+    mid      = "white",
+    high     = "#D6604D",
+    midpoint = 0,
+    name     = "log(OR)"
+  ) +
+  labs(
+    x       = NULL,
+    y       = NULL,
+    title   = "OLR odds ratios: size class ~ environmental predictor",
+    caption = "OR > 1 = larger size classes; OR < 1 = smaller size classes\n* FDR p < 0.05   . FDR p < 0.10"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+    axis.text.y = element_text(face = "italic", size = 9),
+    panel.grid  = element_blank()
+  )
+```
+
+## Significant results table
+
+```{r}
+#| label: olr-table
+olr_results |>
+  filter(converged, p_adj < 0.10) |>
+  arrange(p_adj) |>
+  mutate(
+    OR_CI = paste0(OR, " (", OR_lo, "–", OR_hi, ")"),
+    sig   = case_when(p_adj < 0.05 ~ "*", p_adj < 0.10 ~ ".", TRUE ~ "")
+  ) |>
+  select(Species, Predictor, OR_CI, z_val, p_value, p_adj, sig) |>
+  kable(
+    col.names = c("Species", "Predictor", "OR (95% CI)", "z", "p", "p (FDR)", ""),
+    caption   = "Significant and marginally significant results from univariate cumulative link mixed models. OR > 1 = larger size classes more probable at higher predictor values."
+  ) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Coefficient plot
+
+```{r}
+#| label: olr-coefplot
+#| include: false
+# Show only predictors with at least one noteworthy result
+notable_preds <- olr_results |>
+  filter(converged, p_adj < 0.10) |>
+  pull(Predictor) |>
+  unique()
+
+p_olr_coef <- olr_results |>
+  filter(converged, Predictor %in% notable_preds) |>
+  mutate(sig = !is.na(p_adj) & p_adj < 0.10) |>
+  ggplot(aes(x = OR, y = Species, color = sig)) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "grey50") +
+  geom_errorbarh(aes(xmin = OR_lo, xmax = OR_hi),
+                 height = 0.35, linewidth = 0.7) +
+  geom_point(size = 2.5) +
+  facet_wrap(~Predictor, scales = "free_x", ncol = 3) +
+  scale_color_manual(values = c("TRUE" = "#D6604D", "FALSE" = "grey50"),
+                     name = "FDR p < 0.10") +
+  scale_y_discrete(limits = rev(levels(olr_results$Species)),
+                   labels = function(x) scales::label_wrap(18)(x)) +
+  labs(x = "Odds ratio (95% CI)", y = NULL,
+       title = "OLR odds ratios for notable predictors") +
+  theme_bw(base_size = 10) +
+  theme(axis.text.y = element_text(face = "italic", size = 8))
+```
+
+```{r}
+#| label: fig4
+#| fig-width: 14
+#| fig-height: 13
+#| fig-cap: "**Figure 4.** Environmental drivers of *Pocillopora* size-class structure from univariate cumulative link mixed models (clmm; site as random intercept; 18 FDR-corrected tests: 6 species × 3 predictors). **A:** Odds ratio (OR) heatmap for all species × predictor combinations. OR > 1 (red) = a 1 SD increase in the predictor is associated with higher probability of a colony being in a larger size class; OR < 1 (blue) = higher probability of a smaller size class. \\* = FDR p < 0.05, . = FDR p < 0.10. Four combinations reached FDR p < 0.05: *P. grandis* (OR = 2.81) and *P. meandrina* (OR = 1.81) colonies were more likely in larger size classes at sites with greater daily temperature range; *P. tuahiniensis* (OR = 1.87) showed the same pattern with maximum wave power; and *P. meandrina* (OR = 0.57) colonies were more likely in smaller size classes at sites with higher CTB + Macro cover, consistent with macroalgal competition and smothering suppressing larger colony persistence. Three additional combinations were marginal (FDR p < 0.10): *P. tuahiniensis* with daily temperature range (OR = 1.82) and CTB + Macro (OR = 0.58), and *P. grandis* with maximum wave power (OR = 2.13). **B:** OR with 95% CIs for the three predictors with at least one FDR p < 0.10 result."
+fig4 <- p_olr_heat / p_olr_coef +
+  plot_layout(heights = c(0.9, 1.3)) +
+  plot_annotation(tag_levels = "A",
+                  theme = theme(plot.tag = element_text(face = "bold", size = 12)))
+
+ggsave(here::here("Output", "Figure4.pdf"), fig4, width = 12, height = 11, units = "in")
+ggsave(here::here("Output", "Figure4.jpg"), fig4, width = 12, height = 11, units = "in", dpi = 300)
+fig4
+```
+
+**Interpretation.** Refitting the OLR with a reduced 3-predictor set — daily temperature range, maximum wave power, and CTB + Macro — produced cleaner model fits (no convergence failures; 18 FDR-corrected tests vs. 36 previously) while retaining all biologically supported signals. Maximum temperature was dropped because partial correlation analysis confirmed it carries no unique variance relative to wave power (partial r ≤ 0.36 for all species); CTB and macroalgae were combined because they were individually underpowered and together capture two complementary benthic processes: CTB as hard substrate facilitating larval settlement and recruitment, and macroalgae as a source of competition and smothering pressure on established colonies.
+
+Daily temperature range remained the strongest and most consistent predictor: a 1 SD increase approximately doubled the odds of a colony being in a larger size class for *P. grandis* (OR = 2.81, 95% CI: 1.54–5.13, FDR p = 0.012) and *P. meandrina* (OR = 1.81, 95% CI: 1.23–2.65, FDR p = 0.017), with a marginal effect in *P. tuahiniensis* (OR = 1.82, 95% CI: 1.11–2.99, FDR p = 0.063). This pattern is consistent with the thermal acclimatization hypothesis — sites with greater daily temperature fluctuation support populations skewed toward adult-dominated size structure — and operates independently of total colony abundance.
+
+Maximum wave power was significantly associated with larger size classes in *P. tuahiniensis* (OR = 1.87, 95% CI: 1.24–2.82, FDR p = 0.017) and marginally in *P. grandis* (OR = 2.13, 95% CI: 1.09–4.16, FDR p = 0.067), consistent with size-selective hydrodynamic dislodgement — smaller colonies are more vulnerable at wave-exposed sites, leaving adult-dominated survivors.
+
+Higher CTB + Macro cover was associated with smaller size classes in *P. meandrina* (OR = 0.57, 95% CI: 0.38–0.86, FDR p = 0.028) and marginally in *P. tuahiniensis* (OR = 0.58, 95% CI: 0.36–0.92, FDR p = 0.063), a negative effect not detectable when CTB and macroalgae were modelled as separate terms. This signal is most consistent with macroalgal competition and smothering suppressing the persistence of larger established colonies, though the composite cannot distinguish this from a CTB-driven recruitment effect on size structure. *P. acuta*, *P. effusa*, and *P. verrucosa* showed no significant associations with any predictor after FDR correction.
+
+::: callout-note
+The proportional odds assumption (that OR is constant across all size-class thresholds) was not formally tested for all models here. For key predictors, this assumption can be checked via `nominal_test()` applied to a `clm()` version of the model with site as a fixed effect. Violations would indicate that the environmental effect differs in magnitude across size-class transitions — itself an ecologically interesting finding warranting a partial proportional odds model.
+:::
+
+# Ecological synthesis
+
+The analyses converge on a three-mechanism framework linking environmental conditions to *Pocillopora* size-frequency distributions in Mo'orea:
+
+1.  **Daily thermal variability → adult-dominated size structure.** The most consistent thermal signal across methods: daily temperature range is nominally significant in PERMANOVA (R² = 0.21, p = 0.028), produces the highest Spearman ρ values in the dataset (ρ = 0.80–0.84 for large adults of *P. grandis*, *P. meandrina*, and *P. tuahiniensis*), and is confirmed by OLR — a 1 SD increase in daily range approximately doubles the odds of a colony being in a larger size class for *P. grandis* (OR = 2.81, 95% CI: 1.54–5.13, FDR p = 0.012) and *P. meandrina* (OR = 1.81, 95% CI: 1.23–2.65, FDR p = 0.017), with a marginal effect in *P. tuahiniensis* (OR = 1.82, 95% CI: 1.11–2.99, FDR p = 0.063). Notably, daily temperature range loses almost all explanatory power when size structure is removed (R² drops from 21% to 5%; 4.4-fold), indicating this gradient acts almost exclusively through population size structure rather than species identity.
+
+2.  **Wave exposure → size-selective dislodgement.** Maximum wave power significantly increases the odds of a colony being in a larger size class for *P. tuahiniensis* (OR = 1.87, 95% CI: 1.24–2.82, FDR p = 0.017) and marginally for *P. grandis* (OR = 2.13, 95% CI: 1.09–4.16, FDR p = 0.067), consistent with smaller colonies being more vulnerable to hydrodynamic dislodgement and leaving adult-dominated populations at high-exposure sites. Wave power is significant in PERMANOVA only for the size-structured matrix (R² = 0.19, p = 0.081) and is not significant in Mantel tests, suggesting its effect is diffuse across the community rather than concentrated in pairwise site dissimilarity.
+
+3.  **CTB and macroalgae cover → contrasting effects on recruitment and adult persistence.** CTB + Macro is the most robust predictor across multivariate approaches — nominally significant in both PERMANOVA (R² = 0.22, p = 0.038) and Mantel tests (r = 0.43, p = 0.017), with the partial Mantel confirming the signal is independent of shore geography (partial r = 0.43, p = 0.016). The two components operate through distinct hypothesised mechanisms: CTB provides hard substrate that can facilitate larval settlement and recruitment, consistent with positive Spearman associations between CTB + Macro and small size classes of *P. effusa* (ρ = 0.70) and *P. tuahiniensis* (ρ = 0.43); macroalgae can compete with, damage, or smother established colonies and block larval settlement, consistent with the OLR negative associations in *P. meandrina* (OR = 0.57, 95% CI: 0.38–0.86, FDR p = 0.028) and *P. tuahiniensis* (OR = 0.58, 95% CI: 0.36–0.92, FDR p = 0.063), indicating that higher CTB + Macro cover is associated with smaller size classes in these species. The net negative OLR signal suggests that the macroalgal competition and smothering effect on adult persistence dominates in the aggregate, but the two components cannot be formally separated within this composite.
+
+Critically, all three mechanisms operate at the level of **population size structure** rather than species replacement. No environmental predictor significantly affected species-level community composition (manyglm, all multivariate p ≥ 0.228), yet the same predictors explain up to 22% of variance in the full size-structured community matrix. All six *Pocillopora* species broadly co-occur across all 11 sites; what differs between sites is the shape of the population size distribution within each species.
+
+## Summary figure (Figure 5)
+
+```{r}
+#| label: summary-figure
+#| fig-width: 22
+#| fig-height: 11
+#| fig-cap: "**Figure 5.** Synthesis: three mechanisms linking environmental conditions to *Pocillopora* size-frequency distributions. **Top row — observed patterns** (site × species combinations; point size ∝ total colony density; dashed line = cross-species OLS trend): **A:** Proportion of adult colonies (≥5 cm) vs. daily temperature range (thermal acclimatisation). **B:** Proportion of adult colonies (≥5 cm) vs. maximum wave power (size-selective dislodgement). **C:** Proportion of adult colonies (≥5 cm) vs. CTB + Macro cover (CTB as recruitment substrate; macroalgae as a source of competition and smothering pressure on established colonies). **Bottom row — OLR model predictions** (all *Pocillopora* spp. pooled; species and site as random effects; rug ticks = site locations): **D–F:** Predicted size class probabilities across each gradient. Each column tells one complete mechanism story from raw pattern to model prediction."
+
+# ── Proportion data ────────────────────────────────────────────────────────────
+size_props <- size_complete |>
+  left_join(
+    env_clean |> select(site.name, daily_range_br, max_temp_br, wave_P_max, Hard_Coral),
+    by = "site.name"
+  ) |>
+  group_by(site.name, Species, daily_range_br, max_temp_br, wave_P_max, Hard_Coral) |>
+  summarize(
+    n_total    = sum(Density_m2),
+    prop_juv   = sum(Density_m2[SizeClass == "0-2cm"])                   / sum(Density_m2),
+    prop_adult = sum(Density_m2[SizeClass %in% c(">5cm-14cm", ">14cm")]) / sum(Density_m2),
+    .groups    = "drop"
+  ) |>
+  filter(n_total > 0)
+
+species_cols <- c(
+  "P. tuahiniensis" = "#D55E00",
+  "P. meandrina"    = "#0072B2",
+  "P. verrucosa"    = "#E69F00",
+  "P. grandis"      = "#56B4E9",
+  "P. effusa"       = "#009E73",
+  "P. acuta"        = "#e63946"
+)
+
+scatter_theme <- list(
+  scale_color_manual(values = species_cols, name = NULL,
+                     guide = guide_legend(ncol = 2, override.aes = list(size = 3))),
+  scale_size_continuous(name = expression(atop("Total density", "(col. " * m^{-2} * ")")),
+                        range = c(1.5, 6)),
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE,
+              color = "grey30", linetype = "dashed", linewidth = 0.8),
+  theme_bw(base_size = 10),
+  theme(legend.position  = "bottom",
+        legend.text      = element_text(face = "italic", size = 7),
+        legend.key.size  = unit(0.35, "cm"),
+        plot.subtitle    = element_text(size = 8, color = "grey35"))
+)
+
+olr_fill <- scale_fill_manual(
+  values = c("0-2 cm"   = "#FDE725FF",
+             ">2-5 cm"  = "#35B779FF",
+             ">5-14 cm" = "#31688EFF",
+             ">14 cm"   = "#440154FF"),
+  name   = "Size class"
+)
+
+# Helper: OLR size class predictions along a standardised gradient
+make_olr_pred <- function(fit, grid_vals, grid_z, coef_name) {
+  thresh <- fit$alpha
+  beta   <- coef(fit)[coef_name]
+  map_dfr(seq_along(grid_vals), function(i) {
+    x  <- grid_z[i]
+    p1 <- plogis(thresh[1] - beta * x)
+    p2 <- plogis(thresh[2] - beta * x)
+    p3 <- plogis(thresh[3] - beta * x)
+    tibble(xval       = grid_vals[i],
+           `0-2 cm`   = p1,
+           `>2-5 cm`  = p2 - p1,
+           `>5-14 cm` = p3 - p2,
+           `>14 cm`   = 1  - p3)
+  }) |>
+    pivot_longer(-xval, names_to = "SizeClass", values_to = "Prob") |>
+    mutate(SizeClass = factor(SizeClass,
+                              levels = c("0-2 cm", ">2-5 cm", ">5-14 cm", ">14 cm")))
+}
+
+olr_panel_theme <- list(
+  olr_fill,
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.02))),
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 1.12),
+                     breaks = seq(0, 1, 0.25), labels = scales::percent_format()),
+  theme_bw(base_size = 10),
+  theme(plot.subtitle   = element_text(size = 7.5, color = "grey35"),
+        legend.position = "right",
+        legend.key.size = unit(0.45, "cm"),
+        plot.margin     = margin(14, 8, 4, 8))
+)
+
+# ── Panel A: thermal variability scatter ──────────────────────────────────────
+pA <- ggplot(size_props, aes(x = daily_range_br, y = prop_adult, color = Species)) +
+  geom_point(aes(size = n_total), alpha = 0.75, shape = 16) +
+  scatter_theme +
+  labs(x        = "Daily temperature range (°C)",
+       y        = "Proportion of colonies ≥ 5 cm",
+       title    = "A  Thermal variability",
+       subtitle = "Greater daily range → adult-dominated size structure") +
+  theme(plot.title = element_text(face = "bold", size = 10, color = "#1a6ba0"))
+
+# ── Panel B: wave exposure scatter ────────────────────────────────────────────
+pB_scat <- ggplot(size_props, aes(x = wave_P_max, y = prop_adult, color = Species)) +
+  geom_point(aes(size = n_total), alpha = 0.75, shape = 16) +
+  scatter_theme +
+  labs(x        = expression("Maximum wave power (kW " * m^{-1} * ")"),
+       y        = "Proportion of colonies ≥ 5 cm",
+       title    = "B  Wave exposure",
+       subtitle = "Higher wave power → size-selective dislodgement of small colonies") +
+  theme(plot.title = element_text(face = "bold", size = 10, color = "#2e7d32"))
+
+# ── Panel C: CTB + Macro scatter ──────────────────────────────────────────────
+size_props_algae <- size_props |>
+  left_join(env_clean |> select(site.name, CTB_algae), by = "site.name")
+
+pC_scat <- ggplot(size_props_algae, aes(x = CTB_algae, y = prop_adult, color = Species)) +
+  geom_point(aes(size = n_total), alpha = 0.75, shape = 16) +
+  scatter_theme +
+  labs(x        = "CTB + macroalgae",
+       y        = "Proportion of colonies ≥ 5 cm",
+       title    = "C  Hard substrate availability ",
+       subtitle = "Higher CTB + macro cover → smaller colonies (significant in P. meandrina, P. tuahiniensis)") +
+  theme(plot.title = element_text(face = "bold", size = 10, color = "#b03a2e"))
+
+# ── Panel E: OLR predictions — thermal variability ───────────────────────────
+fit_daily <- clmm(SizeClass ~ daily_range_br_z + (1 | Species) + (1 | site.name),
+                  data = colony_data)
+
+daily_grid  <- seq(min(env_clean$daily_range_br), max(env_clean$daily_range_br), length.out = 50)
+daily_z     <- (daily_grid - mean(env_clean$daily_range_br)) / sd(env_clean$daily_range_br)
+pred_daily  <- make_olr_pred(fit_daily, daily_grid, daily_z, "daily_range_br_z")
+site_daily  <- env_clean |> arrange(daily_range_br) |> select(site.name, daily_range_br)
+
+pD_olr <- ggplot(pred_daily, aes(x = xval, y = Prob, fill = SizeClass)) +
+  geom_area(alpha = 0.85) +
+  geom_rug(data = site_daily, aes(x = daily_range_br),
+           inherit.aes = FALSE, color = "white", linewidth = 0.6, sides = "b") +
+  annotate("text",
+           x = site_daily$daily_range_br,
+           y = rep(c(1.04, 1.08), length.out = nrow(site_daily)),
+           label = site_daily$site.name, size = 2.0, hjust = 0.5, color = "grey40") +
+  olr_panel_theme +
+  labs(x        = "Daily temperature range (°C)  →",
+       y        = "Predicted probability of size class",
+       title    = "D  Predicted size structure — thermal variability",
+       subtitle = "All Pocillopora spp. pooled | OLR (1|Species) + (1|site)  |  Juvenile ← → Adult") +
+  theme(plot.title = element_text(face = "bold", size = 10, color = "#1a6ba0"))
+
+# ── Panel E: OLR predictions — wave power ─────────────────────────────────────
+fit_wave <- clmm(SizeClass ~ wave_P_max_z + (1 | Species) + (1 | site.name),
+                 data = colony_data)
+
+wave_grid  <- seq(min(env_clean$wave_P_max), max(env_clean$wave_P_max), length.out = 50)
+wave_z     <- (wave_grid - mean(env_clean$wave_P_max)) / sd(env_clean$wave_P_max)
+pred_wave  <- make_olr_pred(fit_wave, wave_grid, wave_z, "wave_P_max_z")
+site_wave  <- env_clean |> arrange(wave_P_max) |> select(site.name, wave_P_max)
+
+pE_olr <- ggplot(pred_wave, aes(x = xval, y = Prob, fill = SizeClass)) +
+  geom_area(alpha = 0.85) +
+  geom_rug(data = site_wave, aes(x = wave_P_max),
+           inherit.aes = FALSE, color = "white", linewidth = 0.6, sides = "b") +
+  annotate("text",
+           x = site_wave$wave_P_max,
+           y = rep(c(1.04, 1.08), length.out = nrow(site_wave)),
+           label = site_wave$site.name, size = 2.0, hjust = 0.5, color = "grey40") +
+  olr_panel_theme +
+  labs(x        = expression("Maximum wave power (kW " * m^{-1} * ")"),
+       y        = "Predicted probability of size class",
+       title    = "E  Predicted size structure — wave exposure",
+       subtitle = "All Pocillopora spp. pooled | OLR (1|Species) + (1|site)  |  Juvenile ← → Adult") +
+  theme(plot.title = element_text(face = "bold", size = 10, color = "#2e7d32"))
+
+# ── Panel F: OLR predictions — CTB + Macro ────────────────────────────────────
+fit_algae <- clmm(SizeClass ~ CTB_algae_z + (1 | Species) + (1 | site.name),
+                  data = colony_data)
+
+algae_grid <- seq(min(env_clean$CTB_algae), max(env_clean$CTB_algae), length.out = 50)
+algae_z    <- (algae_grid - mean(env_clean$CTB_algae)) / sd(env_clean$CTB_algae)
+pred_algae <- make_olr_pred(fit_algae, algae_grid, algae_z, "CTB_algae_z")
+site_algae <- env_clean |> arrange(CTB_algae) |> select(site.name, CTB_algae)
+
+pF_olr <- ggplot(pred_algae, aes(x = xval, y = Prob, fill = SizeClass)) +
+  geom_area(alpha = 0.85) +
+  geom_rug(data = site_algae, aes(x = CTB_algae),
+           inherit.aes = FALSE, color = "white", linewidth = 0.6, sides = "b") +
+  annotate("text",
+           x = site_algae$CTB_algae,
+           y = rep(c(1.04, 1.08), length.out = nrow(site_algae)),
+           label = site_algae$site.name, size = 2.0, hjust = 0.5, color = "grey40") +
+  olr_panel_theme +
+  labs(x        = "CTB + macroalgae  →",
+       y        = "Predicted probability of size class",
+       title    = "F  Predicted size structure — hard substrate",
+       subtitle = "All Pocillopora spp. pooled | OLR (1|Species) + (1|site)  |  Juvenile ← → Adult") +
+  theme(plot.title = element_text(face = "bold", size = 10, color = "#b03a2e"))
+
+# ── Assemble: 3 columns × 2 rows ──────────────────────────────────────────────
+fig5 <- ((pA | pB_scat | pC_scat) + plot_layout(guides = "collect") &
+   theme(legend.position = "bottom")) /
+  ((pD_olr | pE_olr | pF_olr) + plot_layout(guides = "collect")) +
+  plot_layout(heights = c(1, 1.2)) +
+  plot_annotation(
+    title   = "Three mechanisms linking environment to Pocillopora size-frequency distributions",
+    caption = paste0(
+      "Top: site × species combinations; size ∝ total colony density; dashed line = cross-species OLS trend.\n",
+      "Bottom: OLR-predicted size class probabilities (all spp. pooled; species + site random effects); rug ticks = site locations. n = 11 sites."
+    ),
+    theme = theme(plot.title   = element_text(face = "bold", size = 11, hjust = 0),
+                  plot.caption = element_text(size = 7, hjust = 0, color = "grey35"))
+  )
+
+ggsave(here::here("Output", "Figure5.pdf"), fig5, width = 12, height = 9, units = "in")
+ggsave(here::here("Output", "Figure5.jpg"), fig5, width = 12, height = 9, units = "in", dpi = 300)
+fig5
+```
+
+## Overarching interpretation
+
+The analyses converge on a three-mechanism framework linking environmental conditions to *Pocillopora* size-frequency distributions in Mo'orea:
+
+**Daily thermal variability → adult-dominated size structure.** The most consistent thermal signal across methods: daily temperature range is nominally significant in PERMANOVA (R² = 0.21, p = 0.028), produces the highest Spearman ρ values in the dataset (ρ = 0.80–0.84 for large adults of *P. grandis*, *P. meandrina*, and *P. tuahiniensis*), and is confirmed by OLR — each 1 SD increase in daily range approximately doubles the odds of a colony being in a larger size class for *P. grandis* (OR = 2.81, 95% CI: 1.54–5.13, FDR p = 0.012) and *P. meandrina* (OR = 1.81, 95% CI: 1.23–2.65, FDR p = 0.017), with a marginal effect in *P. tuahiniensis* (OR = 1.82, 95% CI: 1.11–2.99, FDR p = 0.063). This gradient acts almost entirely through population size structure: R² drops 4.4-fold (from 21% to 5%) when size classes are removed.
+
+**Wave exposure → size-selective dislodgement.** Maximum wave power significantly increases the odds of a colony being in a larger size class for *P. tuahiniensis* (OR = 1.87, 95% CI: 1.24–2.82, FDR p = 0.017) and marginally for *P. grandis* (OR = 2.13, 95% CI: 1.09–4.16, FDR p = 0.067). Smaller colonies are more susceptible to hydrodynamic dislodgement, leaving adult-dominated populations at high-exposure sites.
+
+**CTB and macroalgae cover → contrasting effects on recruitment and adult persistence.** The most robust predictor across multivariate approaches (PERMANOVA R² = 0.22, p = 0.038; Mantel r = 0.43, p = 0.017; partial Mantel r = 0.43, p = 0.016, independent of shore). CTB provides hard substrate that can facilitate larval settlement and recruitment — consistent with positive Spearman associations between CTB + Macro and small size classes of *P. effusa* (ρ = 0.70) and *P. tuahiniensis* (ρ = 0.43). Macroalgae can compete with, damage, or smother established colonies and block larval settlement — consistent with the OLR negative associations in *P. meandrina* (OR = 0.57, 95% CI: 0.38–0.86, FDR p = 0.028) and *P. tuahiniensis* (OR = 0.58, 95% CI: 0.36–0.92, FDR p = 0.063), where higher CTB + Macro cover is associated with smaller size classes. The net negative OLR signal suggests macroalgal effects on adult persistence dominate in aggregate, but the two components cannot be formally separated within the composite.
+
+Critically, all three mechanisms operate at the level of **population size structure** rather than species replacement. No environmental predictor significantly affected species-level community composition (manyglm, all multivariate p ≥ 0.228), yet the same predictors explain up to 22% of variance in the full size-structured community matrix — a 4.4-fold difference for daily temperature range alone (R² = 0.21 with size classes vs. 0.05 without). All six *Pocillopora* species broadly co-occur across all 11 sites; what differs between sites is the shape of the population size distribution within each species.
+
+------------------------------------------------------------------------
+
+## Recommended analyses for a single manuscript
+
+Not all analyses are equally suitable for a peer-reviewed paper. The table below gives recommendations based on statistical defensibility, novelty, and clarity of communication.
+
+| Analysis | Recommendation | Rationale |
+|------------------------|------------------------|------------------------|
+| Size-frequency distributions | ✅ **Main text — Fig 1** | Establishes what the data look like before analysis |
+| NMDS + envfit | ✅ **Main text — Fig 2** | Standard community ecology visualization; contextualizes all other results |
+| Partial Mantel tests | ✅ **Main text — Fig 2** | Controls for shore; identifies benthic substrate effects independent of geography |
+| PERMANOVA (univariate) | ✅ **Main text — Table** | Permutation-based; R² values are interpretable effect sizes |
+| manyglm species composition | ✅ **Main text — Fig 3** | Null result + R² comparison is the key mechanistic evidence for demographic pathways |
+| Ordinal logistic regression (clmm) | ✅ **Main text — Fig 4** | Directly addresses the size-distribution question; novel; OR effect sizes |
+| Synthesis figure | ✅ **Main text — Fig 5** | Integrates all three mechanisms (thermal acclimatization, size-selective dislodgement, CTB recruitment facilitation and macroalgal competition) with raw patterns and OLR predictions |
+| Environmental predictor correlations | 📋 **Supp Fig 1** | Correlation structure among predictors; informs collinearity decisions |
+| Colony density overview | 📋 **Supp Fig 2** | Density heatmap and total density by site; useful context for reviewers |
+| Spearman correlation heatmap | 📋 **Supp Fig 3** | 120 tests (5 predictors × 6 species × 4 size classes); effect sizes (ρ) support OLR and PERMANOVA interpretations ||
+
+------------------------------------------------------------------------
+
+# Statistical considerations
+
+## Method-specific limitations at n = 11
+
+| Method | Key limitation |
+|------------------------------------|------------------------------------|
+| PERMANOVA / envfit | Low power at n = 11; R² more informative than p-values |
+| Mantel / partial Mantel | Shore proxy is binary, not true geographic distance |
+| manyglm (multivariate GLM) | Bootstrap-based p-values; low power at n = 11; predictors tested individually |
+| Ordinal logistic regression (clmm) | Power bounded by n = 11 sites; proportional odds assumption not tested for all models |
+| Spearman correlations | 144 tests (6 predictors × 6 species × 4 size classes); FDR reduces but does not eliminate false positives |
+
+## Recommended interpretation workflow
+
+Build evidence by looking for **convergence across independent methods**. A predictor is most credibly associated with community composition or size structure if it appears across multiple of the following:
+
+1.  **PERMANOVA / partial Mantel** — significant (or near-significant) while controlling for shore
+2.  **manyglm** — significant univariate effect on species composition (or absence thereof, confirming the size-structure pathway)
+3.  **Ordinal logistic regression (clmm)** — consistent odds ratio direction across multiple species
+4.  **Spearman ρ** — consistent sign and moderate-to-large magnitude across size classes of the same species
+
+A predictor supported by 3 or more of these independently is a strong candidate for a genuine association. Relying on any single method alone, especially at n = 11, risks false conclusions in either direction.
+
+## On p-values vs effect sizes
+
+At n = 11, p-values from any single test have very low power and should never be the sole basis for conclusions. **Report effect sizes with uncertainty** (Spearman ρ, Mantel r, PERMANOVA R²) and note the direction of evidence relative to the hypothesis, regardless of whether a threshold is crossed.

@@ -1,15 +1,38 @@
 ---
-title: "Relative_abundance"
-output: html_document
+title: "pocillopora_abundance"
+subtitle: "Statistical analysis and visualization pipeline"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    embed-resources: true
+    fig-width: 10
+    fig-height: 7
+execute:
+  warning: false
+  message: false
+editor: visual
 ---
-This script aims to analyse the relative abundance of Pocillopora around the island of Mo’orea at 12 sites. This script also aims to characterize the benthos at each site in order to better understand the biodiversity in which the Pocillopora community lives.
 
-Q1: What does the benthic cover of the lagoon around the island look like?
+This script aims to analyse the relative abundance of Pocillopora around the island of Mo’orea at 11 sites. This script also aims to characterize the benthos at each site in order to better understand the biodiversity in which the Pocillopora community lives.
+
+Q1: What is the relative benthic cover of the lagoon around the island of Mo'orea?
+
 Q2: What corals are found on the lagoon reefs of Mo’orea?
-Q3: How are Pocillopora species distributed around the lagoon?
-H0: Benthic cover, coral cover, and Pocillopora relative abundance differ by site.
 
-#Install and load packages
+Q3: How are Pocillopora species distributed around the lagoon?
+
+
+#load packages
+
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+```
+
 ```{r}
 library("ggplot2")
 library("vegan")
@@ -23,40 +46,46 @@ library("ggh4x")
 ```
 
 Load Data Files for Analysis
+
 ```{r}
 #read in species id data
-data_haplotype <- read.csv("Data/Haplotype_data_modified_duplication.csv")
+data_species <- read.csv("Data/species_id.csv")
 
 #read in colony diameter data
-data_size <- read.csv("Data/POC_RA_Size.csv")
+data_size <- read.csv("Data/colony_size.csv")
 
 #read in benthic quadrat data
-data_benthic <- read.csv("Data/20260226_Quadrat_Benthos_RA.csv")
+data_benthic <- read.csv("Data/quadrat_benthos.csv")
 ```
 
 Data Cleaning species and diameter
+
 ```{r}
-#filter to only data from the first 3 transects
+#conirm filter to only data from the first 3 transects
 data_size <- data_size %>%
   filter(Transect %in% c("T1", "T2", "T3"))
 
 # Remove uninformative columns ("Sanger.Plate.Name","Sequence.ID","Plate.Well", "gDNA.Extraction.Plate") and filter out NA rows
-data_species <- data_haplotype %>%
+data_species <- data_species %>%
   select(-c("Sanger.Plate.Name","Sequence.ID","Plate.Well", "gDNA.Extraction.Plate", "Notes")) %>% na.omit()
+
+#check data_size to see if there are any values that are 100 in all Diameter columns exactly that do not have text in the Note column
+data_size |>
+  dplyr::filter(Diameter.1 == 100 & Diameter.2 == 100 & Diameter.3 == 100 & (is.na(Note) | Note == ""))
 
 # Remove uninformative columns ("Diameter.1","Diameter.2","Diameter.3","Note") and filter out NA rows and DIV/0! rows and check if diameter is numeric
 data_diameters <- data_size %>%
+  mutate(Diameter.mean = rowMeans(across(c(Diameter.1, Diameter.2, Diameter.3)), na.rm = TRUE)) %>%
   select(-c("Diameter.1","Diameter.2","Diameter.3","Note")) %>%
   na.omit() %>%
   filter(Diameter.mean!="#DIV/0!") 
 
 str(data_diameters)
-data_diameters$Diameter.mean <- as.numeric(data_diameters$Diameter.mean)
-str(data_diameters)
 
 ```
 
 Quality Control of Sample.IDs
+
 ```{r}
 # Check species and diameter datasets by Sample.ID to see if there are any ID problems
 
@@ -128,6 +157,7 @@ data_diameters <- data_diameters %>%
 ```
 
 Sanity checks for data quality
+
 ```{r}
 # This section verifies the integrity of the datasets before
 # any analysis. Each check is documented for reproducibility
@@ -173,7 +203,7 @@ data_diameters %>% count(Sample.ID) %>% filter(n > 1)
 #this should be numeric, not character
 cat("\nSummary of data_diameters:\n")
 range(data_diameters$Diameter.mean)
-#this should range from >0-100, where 100 indicates everything >14cm
+#this should range from >0-100, where 100 indicates >14cm because the whole colony was not in the photograph and it was longer than the size standards of 15 marked cm
 
 cat("\nUnique sites found in data_diameters:\n")
 unique(data_diameters$Site)
@@ -193,6 +223,7 @@ unique(data_species$Haplotype)
 ```
 
 Join the species and size datasets together for Size Class specific analyses
+
 ```{r}
 # --- QC 6: Join Integrity -----------------------------------
 # Identify Sample.IDs present in one dataset but not the other
@@ -284,19 +315,18 @@ cat("Remaining NAs in Transect:", sum(is.na(data$Transect)), "\n")
 cat("Final dataset dimensions:", dim(data), "\n")
 ```
 
-
-Add shore category based on site information
 ```{r}
 #for the rest of the analysis we add the shore for species distribution analysis
 # Manually assign each site to its corresponding shore
 # based on the geographic position around Mo'orea island
-# North: sites S1, S2, S3, S4, S5
+# North: sites S2, S3, S4, S5
 # East:  sites S6, S9, S11
 # West:  sites S12, S14, S15, S18
 
+#Add shore category based on site information
 data <- data %>%
   mutate(Shore = case_when(
-    Site %in% c("S1", "S2", "S3", "S4", "S5")       ~ "North",
+    Site %in% c("S2", "S3", "S4", "S5")       ~ "North",
     Site %in% c("S6", "S9", "S11")         ~ "East",
     Site %in% c("S12", "S14", "S15", "S18")   ~ "West",
     .default = NA_character_
@@ -497,10 +527,12 @@ ggsave(
 )
 
 #write out density data
-write.csv(density_summary,"Data/pocillopora.density.csv")
+write.csv(density_summary,"Output/pocillopora.density.csv")
 
 ```
+
 Moorea site map
+
 ```{r}
 register_google(
   key = Sys.getenv("GOOGLE_MAPS_API_KEY")
@@ -516,7 +548,7 @@ x <- c(bbx["left"], bbx["left"], bbx["right"], bbx["right"])
 y <- c(bbx["bottom"], bbx["top"], bbx["top"], bbx["bottom"])
 df <- data.frame(x, y)
 
-sitedata <- read.csv("Data/site.coords.csv")
+sitedata <- read.csv("Data/site_coords.csv")
 str(sitedata)
 
 labels <- sitedata$Site
@@ -579,9 +611,8 @@ map_plot
 ```
 
 Data Cleaning benthic
-```{r}
 
-data_benthic <- read.csv("Data/20260226_Quadrat_Benthos_RA.csv") 
+```{r}
 
 data_benthic <- data_benthic %>%
   rename(Benthic.Type = Label.code)
@@ -628,7 +659,7 @@ site_order <- c(
 #Add Shore information
 data_benthic <- data_benthic %>%
   mutate(Shore = case_when(
-    Site %in% c("S1", "S2", "S3", "S4", "S5")       ~ "North",
+    Site %in% c("S2", "S3", "S4", "S5")       ~ "North",
     Site %in% c("S6", "S9", "S11")         ~ "East",
     Site %in% c("S12", "S14", "S15", "S18")   ~ "West",
     .default = NA_character_
@@ -747,10 +778,10 @@ N_quadrats <- data_benthic %>%
 
 # Base colors by ecological group
 group_bases <- c(
-  Hard_Coral = "coral4",
-  Algae      = "springgreen4",
-  Misc       = "wheat4",
-  CTB      = "black"
+  Hard_Coral = "#332288",
+  Algae      = "#117733",
+  Misc       = "#888888",
+  CTB      = "#DDCC77"
 )
 
 # Generate shades within each ecological group
@@ -812,6 +843,7 @@ benthic_overall_plot
 ```
 
 Visualize Benthic Cover by Site
+
 ```{r}
 
 # Calculate relative abundance by Shore and Site
@@ -826,7 +858,7 @@ benthic_rel_site <- data_benthic %>%
     Benthic.Name = factor(Benthic.Name, levels = names(color_mapping))
   )
 
-write.csv(benthic_rel_site, "Data/data_benthic_clean.csv")
+write.csv(benthic_rel_site, "Output/data_benthic_clean.csv")
 
 
 # Number of unique quadrats per Shore and Site
@@ -886,6 +918,7 @@ benthic_site_plot
 ```
 
 Coral only relative abundance overall
+
 ```{r}
 
 data_benthic_coral <- data_benthic %>%
@@ -971,7 +1004,9 @@ hard_coral_overall_plot <- ggplot(
   theme(legend.position = "none")
 hard_coral_overall_plot
 ```
+
 Coral only relative abundance by Site
+
 ```{r}
 # Coral relative abundance by Site
 benthic_coral_rel_site <- data_benthic_coral %>%
@@ -1050,7 +1085,127 @@ hard_coral_site_plot <- ggplot(
 hard_coral_site_plot
 ```
 
+Benthic community PERMANOVA and NMDS
+
+```{r}
+# Build transect-level community matrix (rows = transects, cols = benthic types)
+benthic_comm <- data_benthic |>
+  count(Shore, Site, Transect, Benthic.Name, name = "N") |>
+  pivot_wider(names_from = Benthic.Name, values_from = N, values_fill = 0)
+
+meta_b    <- benthic_comm |> select(Shore, Site, Transect)
+comm_mat_b <- benthic_comm |> select(-Shore, -Site, -Transect)
+
+# Bray-Curtis dissimilarity
+dist_b <- vegdist(comm_mat_b, method = "bray")
+
+# --- Shore-level PERMANOVA ---
+set.seed(6142)
+shore_permanova_b <- adonis2(dist_b ~ Shore, data = meta_b, permutations = 9999)
+shore_permanova_b
+
+# Dispersion (homogeneity of within-shore variance)
+disp_shore_b      <- betadisper(dist_b, meta_b$Shore)
+disp_shore_anova  <- anova(disp_shore_b)
+disp_shore_perm   <- permutest(disp_shore_b, permutations = 9999)
+cat("\nShore dispersion ANOVA:\n"); print(disp_shore_anova)
+cat("\nShore dispersion permutation test:\n"); print(disp_shore_perm)
+# Note: Shore PERMANOVA is borderline (p ≈ 0.055) and dispersion is also
+# borderline (p ≈ 0.052), so the shore-level result is inconclusive.
+# The dispersion difference is driven by within-North heterogeneity (see NMDS).
+
+# --- Site-level PERMANOVA ---
+set.seed(6142)
+site_permanova_b <- adonis2(dist_b ~ Site, data = meta_b, permutations = 9999)
+site_permanova_b
+
+# Dispersion (homogeneity of within-site variance)
+disp_site_b      <- betadisper(dist_b, meta_b$Site)
+disp_site_anova  <- anova(disp_site_b)
+disp_site_perm   <- permutest(disp_site_b, permutations = 9999)
+cat("\nSite dispersion ANOVA:\n"); print(disp_site_anova)
+cat("\nSite dispersion permutation test:\n"); print(disp_site_perm)
+# Site PERMANOVA is highly significant (p < 0.0001, R² ≈ 0.80) with no
+# evidence of dispersion differences (p ≈ 0.31), confirming that benthic
+# community composition differs strongly at the site level, not shore level.
+
+# --- NMDS ---
+set.seed(4471)
+nmds_b <- metaMDS(comm_mat_b, distance = "bray", k = 2, trymax = 100)
+cat("Stress:", round(nmds_b$stress, 3), "\n")
+# Stress ~0.22: borderline 2D fit; interpret ordination geometry loosely.
+
+scores_b <- as.data.frame(scores(nmds_b, display = "sites")) |>
+  bind_cols(meta_b)
+
+centroids_b <- scores_b |>
+  group_by(Shore) |>
+  summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2), .groups = "drop")
+
+hulls_b <- scores_b |>
+  group_by(Shore) |>
+  filter(n() >= 3) |>
+  dplyr::slice(chull(NMDS1, NMDS2)) |>
+  ungroup()
+
+# Top 7 benthic types by NMDS loading magnitude
+sp_scores_b <- as.data.frame(scores(nmds_b, display = "species")) |>
+  rownames_to_column("Benthic") |>
+  mutate(mag = sqrt(NMDS1^2 + NMDS2^2)) |>
+  arrange(desc(mag)) |>
+  head(7)
+
+shore_cols_b <- c(North = "turquoise3", East = "palegreen3", West = "plum3")
+
+site_shapes_b <- c(
+  S2=21, S3=22, S4=23, S5=24,
+  S6=25, S9=21, S11=22,
+  S12=23, S14=24, S15=25, S18=21
+)
+
+benthic_nmds_plot <- ggplot(scores_b, aes(NMDS1, NMDS2)) +
+  geom_polygon(data = hulls_b, aes(fill = Shore, group = Shore),
+               alpha = 0.25, color = NA) +
+  geom_point(aes(fill = Shore, shape = Site),
+             color = "black", size = 3, stroke = 0.5) +
+  geom_text(data = centroids_b, aes(label = Shore, color = Shore),
+            fontface = "bold", size = 4) +
+  geom_segment(data = sp_scores_b,
+               aes(x = 0, y = 0, xend = NMDS1 * 0.6, yend = NMDS2 * 0.6),
+               arrow = arrow(length = unit(0.2, "cm")),
+               color = "gray40", linewidth = 0.5) +
+  geom_text(data = sp_scores_b,
+            aes(x = NMDS1 * 0.65, y = NMDS2 * 0.65, label = Benthic),
+            size = 2.8, color = "gray30", fontface = "italic") +
+  scale_fill_manual(values = shore_cols_b) +
+  scale_color_manual(values = shore_cols_b) +
+  scale_shape_manual(values = site_shapes_b) +
+  annotate("text", x = Inf, y = Inf,
+           label = paste0(
+             "Shore PERMANOVA: F = 2.25, R\u00b2 = 0.13, p = 0.055\n",
+             "Site PERMANOVA:  F = 8.79, R\u00b2 = 0.80, p < 0.0001\n",
+             "Site dispersion: p = 0.31  |  Stress = ",
+             round(nmds_b$stress, 3)
+           ),
+           hjust = 1.05, vjust = 1.2, size = 2.8, color = "gray30") +
+  labs(x = "NMDS1", y = "NMDS2",
+       title = "Benthic community composition by shore",
+       fill = "Shore", shape = "Site") +
+  guides(color = "none",
+         shape = guide_legend(override.aes = list(fill = "gray70"))) +
+  theme_bw()
+
+benthic_nmds_plot
+
+ggsave(
+  "Output/benthic_nmds_plot.jpg",
+  benthic_nmds_plot,
+  device = "jpg", width = 8, height = 6, units = "in"
+)
+```
+
 Visualize the size and species data
+
 ```{r}
 
 #Set the Site Order
@@ -1138,6 +1293,7 @@ pocillopora_site_plot
 ```
 
 PERMANOVA test of relative abundance by Site
+
 ```{r}
 comm <- data %>%
   count(Shore, Site, Transect, Species) %>%
@@ -1284,8 +1440,8 @@ geom_text(
   theme_bw()
 ```
 
-
 Plot total Pocillopora with all sites together
+
 ```{r}
 # Calculate overall relative abundance
 rel_abund_overall <- data %>%
@@ -1347,6 +1503,7 @@ pocillopora_overall_plot
 ```
 
 Plot multipanel figures
+
 ```{r}
 # plot objects
 Fig1 <- map_plot + labs(tag = "A")
@@ -1385,30 +1542,30 @@ multi_panel_fig <-
     plot.tag.position = c(0.02, 0.98)
   )
 
-ggsave(
-  "Output/multi_panel_fig.pdf",
-  multi_panel_fig,
-  width = 12,
-  height = 10,
-  units = "in",
-  device = cairo_pdf,
-  bg = "white"
-)
-
-ggsave(
-  "Output/multi_panel_fig.jpg",
-  multi_panel_fig,
-  width = 12,
-  height = 10,
-  units = "in",
-  bg = "white"
-)
+# ggsave(
+#   "Output/multi_panel_fig.pdf",
+#   multi_panel_fig,
+#   width = 12,
+#   height = 10,
+#   units = "in",
+#   device = cairo_pdf,
+#   bg = "white"
+# )
+# 
+# ggsave(
+#   "Output/multi_panel_fig.jpg",
+#   multi_panel_fig,
+#   width = 12,
+#   height = 10,
+#   units = "in",
+#   bg = "white"
+# )
 
 
 ```
 
-
 Relative Abundance by Site and Size Class
+
 ```{r}
 rel_abund <- data %>%
   count(Shore, Site, SizeClass, Species) %>%
@@ -1503,6 +1660,7 @@ pocillopora_size_plot.2
 ```
 
 PERMANOVA, dispersion test, NMDS, and plotting
+
 ```{r}
 # Shore colors
 shore_cols <- c(
@@ -1751,6 +1909,7 @@ pocillopora_NMDS_14up <- size_results[[">14cm"]]$plot +
 ```
 
 Multipanel plot
+
 ```{r}
 # Plot objects
 Fig8 <- pocillopora_size_plot.2 + labs(tag = "A")
@@ -1772,24 +1931,135 @@ multi_panel_nmds <-
     heights = c(1, 1, 1, 1)
   )
 
-ggsave(
-  "Output/multi_panel_nmds.pdf",
-  multi_panel_nmds,
-  width = 10,
-  height = 14,
-  units = "in",
-  device = cairo_pdf,
-  bg = "white"
-)
-
-ggsave(
-  "Output/multi_panel_nmds.jpg",
-  multi_panel_nmds,
-  width = 10,
-  height = 14,
-  units = "in",
-  bg = "white"
-)
+# ggsave(
+#   "Output/multi_panel_nmds.pdf",
+#   multi_panel_nmds,
+#   width = 10,
+#   height = 14,
+#   units = "in",
+#   device = cairo_pdf,
+#   bg = "white"
+# )
+# 
+# ggsave(
+#   "Output/multi_panel_nmds.jpg",
+#   multi_panel_nmds,
+#   width = 10,
+#   height = 14,
+#   units = "in",
+#   bg = "white"
+# )
 
 ```
 
+Co-structure of benthic and Pocillopora communities: Mantel test and Procrustes analysis
+
+Does site-level Pocillopora species composition track site-level benthic community composition? We use a Mantel test (pairwise dissimilarity correlation) and a Procrustes analysis with permutation test (`protest`) to answer this. Both analyses operate at the transect level (n = 33 paired observations across 11 sites × 3 transects).
+
+```{r}
+# Build Pocillopora transect-level community matrix (raw counts)
+poc_comm <- data |>
+  count(Shore, Site, Transect, Species, name = "N") |>
+  pivot_wider(names_from = Species, values_from = N, values_fill = 0) |>
+  mutate(Site = as.character(Site),
+         sort_key = match(Site, c("S2","S3","S4","S5","S6","S9","S11","S12","S14","S15","S18"))) |>
+  arrange(sort_key, Transect) |>
+  select(-sort_key)
+
+# Align benthic matrix to the same site × transect order
+ben_comm_aligned <- benthic_comm |>
+  mutate(sort_key = match(Site, c("S2","S3","S4","S5","S6","S9","S11","S12","S14","S15","S18"))) |>
+  arrange(sort_key, Transect) |>
+  select(-sort_key)
+
+meta_shared  <- poc_comm      |> select(Shore, Site, Transect)
+comm_poc     <- poc_comm      |> select(-Shore, -Site, -Transect)
+comm_ben_aln <- ben_comm_aligned |> select(-Shore, -Site, -Transect)
+
+# Confirm alignment
+stopifnot(identical(
+  paste(poc_comm$Site, poc_comm$Transect),
+  paste(ben_comm_aligned$Site, ben_comm_aligned$Transect)
+))
+
+# Bray-Curtis dissimilarity
+dist_poc <- vegdist(comm_poc,     method = "bray")
+dist_ben <- vegdist(comm_ben_aln, method = "bray")
+
+# --- Mantel test (Spearman correlation of pairwise dissimilarity matrices) ---
+set.seed(3817)
+mantel_result <- mantel(dist_poc, dist_ben,
+                        method = "spearman", permutations = 9999, na.rm = TRUE)
+mantel_result
+# r ≈ 0.14, p ≈ 0.056: weak, borderline positive correlation between
+# benthic and Pocillopora pairwise dissimilarities — no significant co-structure.
+
+# --- Pocillopora NMDS (transect level) ---
+set.seed(7294)
+nmds_poc <- metaMDS(comm_poc, distance = "bray", k = 2, trymax = 100)
+cat("Pocillopora NMDS stress:", round(nmds_poc$stress, 3), "\n")
+
+# --- Procrustes analysis: rotate Pocillopora ordination onto benthic ordination ---
+set.seed(3817)
+proc_result <- protest(nmds_b, nmds_poc, permutations = 9999)
+proc_result
+# Procrustes correlation ≈ 0.22, p ≈ 0.38: the two ordinations do not share
+# significant geometric co-structure after optimal rotation/scaling.
+# Combined with the Mantel result, this indicates that site-level benthic
+# community composition does not predict Pocillopora species composition —
+# the two communities are structured by different site-level drivers.
+
+# --- Procrustes plot ---
+proc_df <- data.frame(
+  Ben_NMDS1 = proc_result$X[, 1],
+  Ben_NMDS2 = proc_result$X[, 2],
+  Poc_NMDS1 = proc_result$Yrot[, 1],
+  Poc_NMDS2 = proc_result$Yrot[, 2]
+) |>
+  bind_cols(meta_shared |> select(Shore, Site))
+
+shore_cols_proc <- c(North = "turquoise3", East = "palegreen3", West = "plum3")
+
+proc_plot <- ggplot(proc_df) +
+  geom_segment(aes(x = Poc_NMDS1, y = Poc_NMDS2,
+                   xend = Ben_NMDS1, yend = Ben_NMDS2,
+                   color = Shore),
+               arrow = arrow(length = unit(0.18, "cm"), type = "closed"),
+               linewidth = 0.7, alpha = 0.8) +
+  geom_point(aes(x = Poc_NMDS1, y = Poc_NMDS2, fill = Shore),
+             shape = 21, size = 3, color = "gray30", stroke = 0.5) +
+  geom_point(aes(x = Ben_NMDS1, y = Ben_NMDS2, fill = Shore),
+             shape = 22, size = 3, color = "gray30", stroke = 0.5) +
+  geom_text(aes(x = (Poc_NMDS1 + Ben_NMDS1) / 2,
+                y = (Poc_NMDS2 + Ben_NMDS2) / 2,
+                label = Site),
+            size = 2.5, color = "gray20", vjust = -0.5) +
+  scale_color_manual(values = shore_cols_proc) +
+  scale_fill_manual(values = shore_cols_proc) +
+  annotate("text", x = Inf, y = Inf,
+           label = paste0("Procrustes correlation = ", round(proc_result$t0, 2),
+                          ",  p = ", round(proc_result$signif, 3), "\n",
+                          "Mantel r = ", round(mantel_result$statistic, 2),
+                          ",  p = ", round(mantel_result$signif, 3), "\n",
+                          "(N = 33 transects, 9,999 permutations)"),
+           hjust = 1.05, vjust = 1.2, size = 2.8, color = "gray30") +
+  annotate("point", x = -Inf, y = Inf, shape = 21, size = 3,
+           fill = "gray60", color = "gray30", stroke = 0.5) +
+  annotate("text",  x = -Inf, y = Inf, label = "  Pocillopora",
+           hjust = -0.15, vjust = 1.6, size = 2.8) +
+  annotate("point", x = -Inf, y = Inf, shape = 22, size = 3,
+           fill = "gray60", color = "gray30", stroke = 0.5) +
+  annotate("text",  x = -Inf, y = Inf, label = "  Benthic",
+           hjust = -0.15, vjust = 3.6, size = 2.8) +
+  labs(x = "Procrustes axis 1", y = "Procrustes axis 2",
+       title = "Procrustes analysis: benthic vs. Pocillopora community",
+       subtitle = "Arrows point from Pocillopora ordination \u2192 benthic ordination (after rotation)",
+       color = "Shore", fill = "Shore") +
+  theme_bw() +
+  theme(plot.subtitle = element_text(size = 8, color = "gray40"))
+
+proc_plot
+
+ggsave("Output/procrustes_plot.jpg", proc_plot,
+       device = "jpg", width = 8, height = 6, units = "in")
+```
